@@ -4,9 +4,10 @@
 // Kept from CS2KZ: jump type detection (LJ, BH, MBH, WJ, LAJ, LAH, JB), distance with the distbug fix, per-strafe
 // sync / gain / bad angles / overlap / dead air / width, W release, takeoff edge and block size for landed jumps,
 // every validity check (collisions, base velocity, water, noclip, teleports, edgebugs, gravity, ...), the chat and
-// console report, the broadcast to other players and the kz.* tier sounds.
+// console report and the kz.* tier sounds.
 // Left out: failstats and jsalways, the HUD panel, strafe graphs, option menus, translations, styles, replays.
-// HNS additions: tier tables, sounds and limits in cfg/hns-movement/jumpstats.cfg; Redie ghosts never report.
+// HNS changes: reports and sounds go to the jumper only (no broadcast, no spectators); tier tables, sounds and limits
+// in cfg/hns-movement/jumpstats.cfg; Redie ghosts never report.
 
 #include "common.h"
 #include "movement/movement.h"
@@ -314,7 +315,7 @@ namespace hns::jumpstats
 
 	DistanceTier GetDistanceTier(JumpType jumpType, f32 distance);
 
-	// Chat, console and sounds for the jumper, their spectators and everyone else (broadcast).
+	// Chat, console and tier sound for the jumper only.
 	void AnnounceJump(Jump *jump);
 
 	void OnBuildGameSessionManifest(IEntityResourceManifest *manifest);
