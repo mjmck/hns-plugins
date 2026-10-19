@@ -9,6 +9,7 @@
 //   hns_hud / !hud      turn your speed and key HUD on or off
 //   hns_js / !js        turn your jumpstats on or off
 //   hns_js_sound / !jssound  turn your jumpstat sounds on or off
+//   !pb [type]  !top [type] [block]  !sr   jumpstat personal bests, top 10 and server records (needs sql_mm)
 class CCommandContext;
 class CCommand;
 

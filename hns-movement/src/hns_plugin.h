@@ -20,6 +20,8 @@ public:
 	bool Pause(char *error, size_t maxlen);
 	bool Unpause(char *error, size_t maxlen);
 	void AllPluginsLoaded();
+	void OnPluginLoad(PluginId id);
+	void OnPluginUnload(PluginId id);
 
 public:
 	const char *GetAuthor()

@@ -57,6 +57,8 @@ namespace hns::config
 			{"hns_js_broadcast_sound_min_tier",SettingDef::Int,&settings.jsBroadcastSoundMinTier,"Lowest tier that plays a sound for everyone else (0 = never)."},
 			{"hns_js_volume",           SettingDef::Float, &settings.jsVolume,             "Jumpstat sound volume, 0-1."},
 			{"hns_js_console",          SettingDef::Bool,  &settings.jsConsole,            "1 = also print the detailed report and strafe table to console."},
+			{"hns_js_db",               SettingDef::Bool,  &settings.jsDb,                 "1 = save personal bests and server records to a local SQLite file (needs the sql_mm Metamod plugin)."},
+			{"hns_js_db_announce",      SettingDef::Bool,  &settings.jsDbAnnounceRecords,  "1 = announce new server records to everyone."},
 			{"hns_team_switch",         SettingDef::Bool,  &settings.teamSwitch,           "1 = swap teams when the CTs win. Keep 0 when ChaseMod handles the team switch."},
 			{"hns_t_winstreak_switch",  SettingDef::Int,   &settings.tWinStreakSwitch,     "Also swap teams after this many T wins in a row. 0 = never."},
 			{"hns_rampbug_threshold",   SettingDef::Float, &settings.rampbugThreshold,     "Rampbug fix: dot product below which two normals are different planes (CS2KZ: 0.999)."},

@@ -111,6 +111,12 @@ defaults are CS2KZ Classic, which this server's movement settings outgrow. Sound
 its workshop addon 3469155349 mounted with MultiAddonManager. Players toggle with `!js` and `!jssound`. Not ported:
 failstats, jsalways, the HUD panel, strafe graphs and option menus. Redie ghosts never report.
 
+Records: with the [sql_mm](https://github.com/zer0k-z/sql_mm) Metamod plugin installed (as CS2KZ's local database
+uses), personal bests and server records are kept in `addons/hns-movement/data/jumpstats.sqlite3` (one row per player,
+jump type and block / non-block). New bests are shown to the jumper, new server records to everyone
+(`hns_js_db`, `hns_js_db_announce`). Chat: `!pb [type]`, `!top [type] [block]`, `!sr`. Console:
+`hns_js_db_delete <SteamID64> [type]`, `hns_js_db_reset confirm`. Without sql_mm everything else works and records are off.
+
 ## After a CS2 update
 
 Signatures break. Run `scripts/sync-gamedata.sh` to copy CS2KZ's latest gamedata, rebuild, and check the server log.

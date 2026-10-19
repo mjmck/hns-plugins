@@ -16,6 +16,7 @@
 #include "hns/hns_commands.h"
 #include "hns/hns_gameplay.h"
 #include "hns/hns_compat.h"
+#include "jumpstats/js_db.h"
 
 #include "tier0/memdbgon.h"
 
@@ -65,6 +66,7 @@ bool HNSPlugin::Load(PluginId id, ISmmAPI *ismm, char *error, size_t maxlen, boo
 	if (late)
 	{
 		g_pHNSPlayerManager->ResetPlayers();
+		hns::jumpstats::db::Init();
 		hns::cvars::SendToAllClients();
 	}
 
@@ -76,6 +78,7 @@ bool HNSPlugin::Load(PluginId id, ISmmAPI *ismm, char *error, size_t maxlen, boo
 bool HNSPlugin::Unload(char *error, size_t maxlen)
 {
 	this->unloading = true;
+	hns::jumpstats::db::Cleanup();
 	hns::cvars::EnableReplication();
 	for (i32 i = 0; i < MAXPLAYERS + 1; i++)
 	{
@@ -97,6 +100,21 @@ bool HNSPlugin::Unload(char *error, size_t maxlen)
 void HNSPlugin::AllPluginsLoaded()
 {
 	g_pHNSPlayerManager->ResetPlayers();
+	// sql_mm is loaded by now if it is installed.
+	hns::jumpstats::db::Init();
+}
+
+void HNSPlugin::OnPluginLoad(PluginId id)
+{
+	if (!this->loading)
+	{
+		hns::jumpstats::db::Init();
+	}
+}
+
+void HNSPlugin::OnPluginUnload(PluginId id)
+{
+	hns::jumpstats::db::OnPluginUnloaded();
 }
 
 void HNSPlugin::OnLevelInit(char const *pMapName, char const *pMapEntities, char const *pOldLevel, char const *pLandmarkName, bool loadGame,

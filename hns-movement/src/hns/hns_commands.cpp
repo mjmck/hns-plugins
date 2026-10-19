@@ -8,6 +8,7 @@
 #include "hns_hud.h"
 #include "hns_joinsound.h"
 #include "jumpstats/js_jumpstats.h"
+#include "jumpstats/js_db.h"
 #include "utils/utils.h"
 
 #include "tier0/memdbgon.h"
@@ -33,6 +34,7 @@ CON_COMMAND_F(hns_reload, "Reload cfg/hns-movement/hns-movement.cfg (and join-so
 	hns::cvars::SendToAllClients();
 	hns::gameplay::ApplyServerSettings();
 	hns::compat::Check();
+	hns::jumpstats::db::Init();
 	HNS_LOG_INFO(LogChannel::General, "Reloaded. Run hns_write_fallback if you also want the fallback cfg updated.\n");
 }
 
@@ -119,13 +121,17 @@ namespace hns::commands
 	struct ChatCommand
 	{
 		const char *name;
-		void (*run)(CPlayerSlot slot);
+		// args: the rest of the message after the command word (may be empty).
+		void (*run)(CPlayerSlot slot, const char *args);
 	};
 
 	static const ChatCommand chatCommands[] = {
-		{"hud", ToggleHud},
-		{"js", hns::jumpstats::ToggleReporting},
-		{"jssound", hns::jumpstats::ToggleSounds},
+		{"hud", [](CPlayerSlot slot, const char *) { ToggleHud(slot); }},
+		{"js", [](CPlayerSlot slot, const char *) { hns::jumpstats::ToggleReporting(slot); }},
+		{"jssound", [](CPlayerSlot slot, const char *) { hns::jumpstats::ToggleSounds(slot); }},
+		{"pb", hns::jumpstats::db::PrintPersonalBests},
+		{"top", hns::jumpstats::db::PrintTop},
+		{"sr", hns::jumpstats::db::PrintServerRecords},
 	};
 
 	bool OnSay(const CCommandContext &context, const CCommand &args)
@@ -157,11 +163,16 @@ namespace hns::commands
 			word[len++] = *c;
 		}
 		word[len] = '\0';
+		const char *rest = text + 1 + len;
+		while (*rest == ' ')
+		{
+			rest++;
+		}
 		for (const ChatCommand &command : chatCommands)
 		{
 			if (V_stricmp(word, command.name) == 0)
 			{
-				command.run(slot);
+				command.run(slot, rest);
 				return prefix == '/';
 			}
 		}

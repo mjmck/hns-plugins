@@ -82,6 +82,10 @@ namespace hns::config
 		f32 jsVolume = 0.75f;
 		// Print the detailed report (and per-strafe table) to console too.
 		bool jsConsole = true;
+		// Personal bests and server records in addons/hns-movement/data/jumpstats.sqlite3 (needs the sql_mm plugin).
+		bool jsDb = true;
+		// Announce new server records to everyone.
+		bool jsDbAnnounceRecords = true;
 		// Swap CTs and Ts when the CTs win.
 		bool teamSwitch = false; // ChaseMod owns the team switch (see hns_compat.h)
 		// Also swap after this many T wins in a row. 0 = never.

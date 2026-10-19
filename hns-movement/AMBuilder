@@ -81,6 +81,7 @@ def configure_main(sdk_target, sdk, cxx, protoc_builder):
     os.path.join(builder.sourcePath, 'src', 'jumpstats', 'js_validate.cpp'),
     os.path.join(builder.sourcePath, 'src', 'jumpstats', 'js_block.cpp'),
     os.path.join(builder.sourcePath, 'src', 'jumpstats', 'js_report.cpp'),
+    os.path.join(builder.sourcePath, 'src', 'jumpstats', 'js_db.cpp'),
   ]
 
   if binary.compiler.target.platform == 'linux':

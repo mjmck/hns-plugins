@@ -6,6 +6,7 @@
 #include "hns/hns_player.h"
 #include "hns/hns_config.h"
 #include "sdk/resourcemanifest.h"
+#include "js_db.h"
 #include "utils/utils.h"
 
 #include <string>
@@ -422,6 +423,8 @@ namespace hns::jumpstats
 				PlayJumpstatSound(viewer, tier, true);
 			}
 		}
+		// After the report, so a personal best / server record line comes right below it.
+		hns::jumpstats::db::OnJump(jump, tier);
 	}
 
 	void OnBuildGameSessionManifest(IEntityResourceManifest *manifest)
@@ -463,6 +466,7 @@ namespace hns::jumpstats
 
 	void PrintStatus()
 	{
+		hns::jumpstats::db::PrintStatus();
 		META_CONPRINTF("---- hns-movement jumpstats (%s) ----\n", hns::config::settings.jumpstats ? "on" : "off");
 		META_CONPRINTF("%-4s %7s %7s %7s %7s %7s %7s\n", "type", "meh", "impr", "perf", "godlike", "ownage", "wrecker");
 		for (i32 i = 0; i < JS_TIERED_JUMPTYPES; i++)
