@@ -390,6 +390,10 @@ namespace hns::jumpstats::db
 			{
 				V_snprintf(length, sizeof(length), "%.1f", distance);
 			}
+			if (rank == 1)
+			{
+				hns::jumpstats::PlayRecordSound();
+			}
 			utils::CPrintChatAll("%s {default}%s {grey}is now {gold}#%d {grey}in the {lime}%s%s {grey}JumpTop! ({gold}%s{grey})", JS_DB_PREFIX,
 								 name.c_str(), rank, jumpTypeStr[type], isBlock ? " Block" : "", length);
 		};

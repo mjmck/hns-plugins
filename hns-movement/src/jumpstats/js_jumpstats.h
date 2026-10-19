@@ -314,6 +314,9 @@ namespace hns::jumpstats
 
 	DistanceTier GetDistanceTier(JumpType jumpType, f32 distance);
 
+	// record_sound from jumpstats.cfg, to every human with jumpstat sounds on (a server record was just broken).
+	void PlayRecordSound();
+
 	// Chat, console and sounds for the jumper, their spectators and everyone else (broadcast).
 	void AnnounceJump(Jump *jump);
 

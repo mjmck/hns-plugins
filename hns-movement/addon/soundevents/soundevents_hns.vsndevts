@@ -9,4 +9,12 @@
 		pitch = 1.0
 		vsnd_files_track_01 = "sounds/hns/join/vip.vsnd"
 	}
+	// Played to everyone when a jumpstat server record (#1 in a JumpTop) is broken. Name used in jumpstats.cfg.
+	"hns.record" =
+	{
+		type = "csgo_mega"
+		volume = 1.0
+		pitch = 1.0
+		vsnd_files_track_01 = "sounds/hns/record/server_record.vsnd"
+	}
 }

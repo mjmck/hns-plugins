@@ -7,7 +7,8 @@ mounted with MultiAddonManager).
 ```
 addon/
   soundevents/soundevents_hns.vsndevts   sound event definitions (hns.join.vip -> sounds/hns/join/vip.vsnd)
-  sounds/hns/join/vip.wav                the audio file (add it yourself)
+  sounds/hns/join/vip.wav                join sound (add it yourself)
+  sounds/hns/record/server_record.wav    jumpstat server record sound, event hns.record (add it yourself)
 ```
 
 ## Build and publish

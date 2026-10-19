@@ -38,6 +38,7 @@ namespace hns::jumpstats
 		f32 tiers[JS_TIERED_JUMPTYPES][DISTANCETIER_COUNT - 1];
 		std::string sounds[DISTANCETIER_COUNT];
 		f32 maxDistance = 500.0f; // CS2KZ: no tier above 500 units
+		std::string recordSound = "hns.record";
 		std::vector<std::string> precacheFiles;
 	};
 
@@ -101,8 +102,12 @@ namespace hns::jumpstats
 			V_snprintf(line, sizeof(line), "sound %-10s %s\n", distanceTierNames[i], defaultSounds[i]);
 			out += line;
 		}
-		out += "\n// Soundevents files added to every map's precache manifest (same as CS2KZ does for its addon).\n"
-			   "precache \"soundevents/soundevents_cs2kz.vsndevts\"\n";
+		out += "\n// Played to everyone (who has !jssound on) when a server record is broken: #1 in a JumpTop. Needs hns_js_db and\n"
+			   "// sql_mm. hns.record is in the HNS workshop addon (hns-movement/addon). \"\" = silent.\n"
+			   "record_sound hns.record\n"
+			   "\n// Soundevents files added to every map's precache manifest (same as CS2KZ does for its addon).\n"
+			   "precache \"soundevents/soundevents_cs2kz.vsndevts\"\n"
+			   "precache \"soundevents/soundevents_hns.vsndevts\"\n";
 		return out;
 	}
 
@@ -148,6 +153,11 @@ namespace hns::jumpstats
 				tables.precacheFiles.push_back(tokens[1]);
 				continue;
 			}
+			if (KZ_STREQI(key, "record_sound"))
+			{
+				tables.recordSound = tokens.size() >= 2 ? tokens[1] : "";
+				continue;
+			}
 			if (KZ_STREQI(key, "max_distance") && tokens.size() >= 2)
 			{
 				tables.maxDistance = (f32)atof(tokens[1].c_str());
@@ -182,6 +192,24 @@ namespace hns::jumpstats
 		}
 		HNS_LOG_INFO(LogChannel::General, "Loaded %s.\n", HNS_JUMPSTATS_PATH);
 		return true;
+	}
+
+	void PlayRecordSound()
+	{
+		if (tables.recordSound.empty())
+		{
+			return;
+		}
+		f32 volume = Clamp(hns::config::settings.jsVolume, 0.0f, 1.0f);
+		for (i32 i = 0; i < MAXPLAYERS; i++)
+		{
+			HNSPlayer *viewer = g_pHNSPlayerManager->ToPlayer(CPlayerSlot(i));
+			if (!viewer || !viewer->IsConnectedController() || viewer->IsFakeClient() || !viewer->jumpstats->sounds)
+			{
+				continue;
+			}
+			utils::PlaySoundToClient(CPlayerSlot(i), tables.recordSound.c_str(), volume);
+		}
 	}
 
 	DistanceTier GetDistanceTier(JumpType jumpType, f32 distance)
@@ -475,6 +503,7 @@ namespace hns::jumpstats
 			META_CONPRINTF("%-4s %7g %7g %7g %7g %7g %7g\n", jumpTypeShortStr[i], t[0], t[1], t[2], t[3], t[4], t[5]);
 		}
 		META_CONPRINTF("max_distance %g\n", tables.maxDistance);
+		META_CONPRINTF("record_sound %s\n", tables.recordSound.c_str());
 		for (i32 i = DistanceTier_Impressive; i < DISTANCETIER_COUNT; i++)
 		{
 			META_CONPRINTF("sound %-10s %s\n", distanceTierNames[i], tables.sounds[i].c_str());
