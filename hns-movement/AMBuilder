@@ -76,6 +76,13 @@ def configure_main(sdk_target, sdk, cxx, protoc_builder):
     os.path.join(builder.sourcePath, 'src', 'hns', 'hns_weapons.cpp'),
     os.path.join(builder.sourcePath, 'src', 'hns', 'hns_compat.cpp'),
     os.path.join(builder.sourcePath, 'src', 'hns', 'hns_hud.cpp'),
+    # Jumpstats, ported from CS2KZ src/kz/jumpstats
+    os.path.join(builder.sourcePath, 'src', 'jumpstats', 'jumpstats.cpp'),
+    os.path.join(builder.sourcePath, 'src', 'jumpstats', 'jump_validating.cpp'),
+    os.path.join(builder.sourcePath, 'src', 'jumpstats', 'jump_reporting.cpp'),
+    os.path.join(builder.sourcePath, 'src', 'jumpstats', 'block_tracking.cpp'),
+    os.path.join(builder.sourcePath, 'src', 'jumpstats', 'strafe_graph.cpp'),
+    os.path.join(builder.sourcePath, 'src', 'jumpstats', 'jumpstats_hns.cpp'),
   ]
 
   if binary.compiler.target.platform == 'linux':

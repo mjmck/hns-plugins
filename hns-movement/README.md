@@ -14,7 +14,8 @@ License: AGPL-3.0 (inherited). If you run a modified version on a public server 
 | Hook layer (27 movement detours + `TracePlayerBBox`) | `src/utils/hooks.cpp` | CS2KZ, trimmed to movement only |
 | Player / movement model | `src/player/`, `src/movement/` | CS2KZ, unchanged |
 | Classic movement logic | `src/hns/hns_movement.*` | Port of `kz_mode_ckz.cpp`; HNS changes marked `HNS:` |
-| Player | `src/hns/hns_player.*` | Replaces `KZPlayer` (no timer, HUD, jumpstats, DB, anticheat) |
+| Player | `src/hns/hns_player.*` | Replaces `KZPlayer` (no timer, DB, anticheat) |
+| Jumpstats | `src/jumpstats/` | Port of CS2KZ `src/kz/jumpstats` (see Jumpstats below) |
 | Cvar ownership | `src/hns/hns_cvars.*` | New, same write method as CS2KZ's `ApplyModeSettings` |
 | Config | `src/hns/hns_config.*`, `cfg/` | New |
 | Commands | `src/hns/hns_commands.*` | New |
@@ -25,7 +26,7 @@ jump-release handling, 0.02 s perf window, KZ perf speed formula and prestrafe, 
 (ladders), crouch-jump bind removal, duck-spam slowdown fix, view-angle interpolation, rampbug fix, ground-trace fix,
 slope fix, water fix, ladder takeoff/landing handling.
 
-Not ported: timer-zone gating, distance tiers, and triggerfix (`TouchTriggersAlongPath` needs CS2KZ's trigger service;
+Not ported: timer-zone gating and triggerfix (`TouchTriggersAlongPath` needs CS2KZ's trigger service;
 the TryPlayerMove path is still recorded so it can be added later).
 
 ## Install
@@ -71,6 +72,39 @@ The plugin writes cvar memory directly every tick (like CS2KZ). That never trigg
 would keep stale values and mispredict. CS2KZ solves this by removing `FCVAR_REPLICATED` and sending the values to each
 client itself (`SendConVarValue`) when the player becomes active. hns-movement does the same on `ClientActive` and on
 `hns_reload`. This is the reasoning read from CS2KZ's source; it still needs to be confirmed on a live server (P2 spike).
+
+## Jumpstats
+
+Ported from CS2KZ's `src/kz/jumpstats` (`kz_jumpstats.cpp`, `jump_validating.cpp`, `jump_reporting.cpp`, `block_tracking.cpp`,
+`strafe_graph.cpp`). The maths is unchanged and runs on the same hooks as in CS2KZ (AirAccelerate, TryPlayerMove, takeoff
+and landing with the distbug fix), so the numbers match what a KZ server would show for the same jump.
+
+Reported: jump type (LJ, BH, MBH, WJ, LAJ, LAH, JB), distance, strafes, sync, pre/max speed, block, edge, landing edge,
+miss, height, airtime, width, gain efficiency, airpath, BA/OL/DA, deviation, W release, offset, failstats, a per-strafe
+table and a strafe/mouse graph in console. Invalid jumps (noclip, water, wall collisions, teleports, base velocity,
+gravity changes, edgebugs) are dropped exactly as in CS2KZ.
+
+What differs from CS2KZ:
+
+- Chat and console only. No HUD panel, menus, sounds, translations, styles, anticheat, replays or DB.
+- Player settings last until they disconnect and start from the cfg (`hns_js_*`). Chat commands:
+
+| Command | |
+|---|---|
+| `!js` | Your jumpstats on/off. |
+| `!jstier <tier>` | Lowest tier of your own jumps shown in chat. `0`-`6` or `none`, `meh`, `impressive`, `perfect`, `godlike`, `ownage`, `wrecker`. |
+| `!jstierconsole <tier>` | Same for the full console report. |
+| `!jsbroadcast <tier>` | Lowest tier of other players' jumps announced to you. |
+| `!jsextend` | Second chat line with the extended stats. |
+| `!jsalways` | Report every jump, invalid ones included (greyed, with the reason in console). |
+| `!jsfailstats` | Report jumps that fell short of the block. |
+| `!jshelp` | List these. |
+
+- Distance tiers are in the cfg (`hns_js_tiers_lj` ... `hns_js_tiers_jb`), defaulting to CS2KZ Classic's. This server
+  gains more air speed than KZ (`sv_air_max_wishspeed 35` vs 30), so expect more high tiers until they are raised.
+- CS2KZ invalidates trigger_push through its trigger service; here `hns_js_push_check` invalidates any jump whose
+  velocity is changed outside movement (jump pads, boosters). Turn it off if valid jumps stop showing up, and use
+  `!jsalways` to see the reason a jump was dropped.
 
 ## Build
 

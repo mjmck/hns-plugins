@@ -17,7 +17,8 @@ namespace hns::config
 		{
 			Bool,
 			Float,
-			Int
+			Int,
+			Tiers // f32[6], written as one quoted value: "217 265 270 275 280 284"
 		} type;
 		void *target;
 		const char *description;
@@ -52,6 +53,20 @@ namespace hns::config
 			{"hns_rampbug_min_distance",SettingDef::Float, &settings.rampbugMinDistance,   "Rampbug fix: offset trace must go this much further to be used (CS2KZ: 1.0)."},
 			{"hns_warn_external_change",SettingDef::Bool,  &settings.warnOnExternalChange, "Warn in console when something else changes an enforced cvar."},
 			{"hns_debug_perf",          SettingDef::Bool,  &settings.debugPerf,            "Print every takeoff to the server console (development only)."},
+			{"hns_js_enabled",          SettingDef::Bool,  &settings.jsEnabled,            "1 = jumpstats on (ported from CS2KZ). Players type !jshelp for their own settings."},
+			{"hns_js_min_tier",         SettingDef::Int,   &settings.jsMinTier,            "Default lowest tier of a player's own jumps shown in chat (0 none, 1 meh, 2 impressive, 3 perfect, 4 godlike, 5 ownage, 6 wrecker)."},
+			{"hns_js_min_tier_console", SettingDef::Int,   &settings.jsMinTierConsole,     "Default lowest tier of a player's own jumps printed to their console with the full stats."},
+			{"hns_js_broadcast_tier",   SettingDef::Int,   &settings.jsBroadcastMinTier,   "Default lowest tier of other players' jumps announced in chat."},
+			{"hns_js_extended_chat",    SettingDef::Bool,  &settings.jsExtendedChat,       "1 = players get the second chat line (height, airtime, width, gain efficiency...) by default."},
+			{"hns_js_failstats",        SettingDef::Bool,  &settings.jsFailstats,          "1 = report failed jumps (did not reach the block) by default."},
+			{"hns_js_push_check",       SettingDef::Bool,  &settings.jsExternalSpeedCheck, "1 = a jump whose velocity is changed outside movement (jump pad, booster, trigger_push) is invalid."},
+			{"hns_js_tiers_lj",         SettingDef::Tiers, &settings.jsTiers[0],           "Long jump distances for meh/impressive/perfect/godlike/ownage/wrecker (CS2KZ Classic values)."},
+			{"hns_js_tiers_bh",         SettingDef::Tiers, &settings.jsTiers[1],           "Bunnyhop tier distances."},
+			{"hns_js_tiers_mbh",        SettingDef::Tiers, &settings.jsTiers[2],           "Multi bunnyhop tier distances."},
+			{"hns_js_tiers_wj",         SettingDef::Tiers, &settings.jsTiers[3],           "Weird jump tier distances."},
+			{"hns_js_tiers_laj",        SettingDef::Tiers, &settings.jsTiers[4],           "Ladder jump tier distances."},
+			{"hns_js_tiers_lah",        SettingDef::Tiers, &settings.jsTiers[5],           "Ladderhop tier distances."},
+			{"hns_js_tiers_jb",         SettingDef::Tiers, &settings.jsTiers[6],           "Jumpbug tier distances."},
 		};
 		// clang-format on
 		count = KZ_ARRAYSIZE(defs);
@@ -75,6 +90,30 @@ namespace hns::config
 			else if (defs[i].type == SettingDef::Int)
 			{
 				*(i32 *)defs[i].target = atoi(value);
+			}
+			else if (defs[i].type == SettingDef::Tiers)
+			{
+				// strtof rather than sscanf: glibc 2.38 headers turn sscanf into __isoc23_sscanf, which the server's runtime lacks.
+				f32 parsed[6];
+				i32 found = 0;
+				const char *cursor = value;
+				while (found < 6)
+				{
+					char *end;
+					f32 number = strtof(cursor, &end);
+					if (end == cursor)
+					{
+						break;
+					}
+					parsed[found++] = number;
+					cursor = end;
+				}
+				if (found != 6)
+				{
+					HNS_LOG_WARN(LogChannel::General, "%s needs 6 distances in quotes, e.g. \"217 265 270 275 280 284\". Kept the default.\n", name);
+					return true;
+				}
+				memcpy(defs[i].target, parsed, sizeof(parsed));
 			}
 			else
 			{
@@ -268,6 +307,12 @@ namespace hns::config
 			{
 				V_snprintf(line, sizeof(line), "%-26s %d // %s\n", defs[i].name, *(i32 *)defs[i].target, defs[i].description);
 			}
+			else if (defs[i].type == SettingDef::Tiers)
+			{
+				const f32 *t = (const f32 *)defs[i].target;
+				V_snprintf(line, sizeof(line), "%-26s \"%g %g %g %g %g %g\" // %s\n", defs[i].name, t[0], t[1], t[2], t[3], t[4], t[5],
+						   defs[i].description);
+			}
 			else
 			{
 				V_snprintf(line, sizeof(line), "%-26s %g // %s\n", defs[i].name, *(f32 *)defs[i].target, defs[i].description);
@@ -298,6 +343,11 @@ namespace hns::config
 			else if (defs[i].type == SettingDef::Int)
 			{
 				META_CONPRINTF("%-26s %d\n", defs[i].name, *(i32 *)defs[i].target);
+			}
+			else if (defs[i].type == SettingDef::Tiers)
+			{
+				const f32 *t = (const f32 *)defs[i].target;
+				META_CONPRINTF("%-26s \"%g %g %g %g %g %g\"\n", defs[i].name, t[0], t[1], t[2], t[3], t[4], t[5]);
 			}
 			else
 			{

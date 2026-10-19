@@ -73,6 +73,32 @@ namespace hns::config
 
 		// Print every takeoff (perf or not, time on ground, speeds) to the server console. Development only.
 		bool debugPerf = false;
+
+		// ---- Jumpstats (src/jumpstats, ported from CS2KZ) ----
+		// Master switch. Off = no jump is reported to anyone (jumps are still tracked).
+		bool jsEnabled = true;
+		// Defaults for each player's preferences (they change their own with !jstier, !jsbroadcast, ... until they leave).
+		// Tiers: 0 None (off), 1 Meh, 2 Impressive, 3 Perfect, 4 Godlike, 5 Ownage, 6 Wrecker. Same defaults as CS2KZ.
+		i32 jsMinTier = 2;          // own jumps in chat
+		i32 jsMinTierConsole = 1;   // own jumps in console (full stats + strafe table)
+		i32 jsBroadcastMinTier = 5; // other players' jumps announced in chat
+		bool jsExtendedChat = false;
+		bool jsFailstats = true;
+		// Invalidate a jump when its velocity is changed outside of movement (jump pads, boosters, trigger_push). CS2KZ
+		// does this with its trigger service; this is hns-movement's replacement. Turn off if valid jumps go missing.
+		bool jsExternalSpeedCheck = true;
+		// Distance (units) a jump needs for Meh, Impressive, Perfect, Godlike, Ownage, Wrecker, per jump type.
+		// Defaults are CS2KZ Classic's. This server's sv_air_max_wishspeed 35 (CS2KZ 30) gains more speed in the air,
+		// so these will be reached more easily than on a KZ server; raise them once you see real numbers.
+		f32 jsTiers[7][6] = {
+			{217.0f, 265.0f, 270.0f, 275.0f, 280.0f, 284.0f}, // LJ
+			{217.0f, 275.0f, 280.0f, 287.0f, 292.0f, 295.0f}, // BH
+			{217.0f, 275.0f, 280.0f, 287.0f, 292.0f, 295.0f}, // MBH
+			{217.0f, 275.0f, 280.0f, 287.0f, 292.0f, 295.0f}, // WJ
+			{120.0f, 160.0f, 170.0f, 180.0f, 190.0f, 200.0f}, // LAJ
+			{217.0f, 260.0f, 265.0f, 270.0f, 275.0f, 278.0f}, // LAH
+			{217.0f, 275.0f, 280.0f, 287.0f, 292.0f, 295.0f}, // JB
+		};
 	};
 
 	inline Settings settings;

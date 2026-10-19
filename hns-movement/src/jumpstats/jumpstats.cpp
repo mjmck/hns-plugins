@@ -1,0 +1,1099 @@
+// Ported from CS2KZ src/kz/jumpstats/kz_jumpstats.cpp (AGPL-3.0, KZGlobalTeam). See jumpstats.h for what changed.
+#include "hns/hns_player.h"
+#include "utils/utils.h"
+
+#include "jumpstats.h"
+#include <algorithm>
+#include "tier0/memdbgon.h"
+
+// clang-format off
+
+const char *jumpTypeStr[JUMPTYPE_COUNT] = {
+	"Long Jump",
+	"Bunnyhop",
+	"Multi Bunnyhop",
+	"Weird Jump",
+	"Ladder Jump",
+	"Ladderhop",
+	"Jumpbug",
+	"Fall",
+	"Unknown Jump",
+	"Invalid Jump"
+};
+
+const char *jumpTypeShortStr[JUMPTYPE_COUNT] = {
+	"LJ",
+	"BH",
+	"MBH",
+	"WJ",
+	"LAJ",
+	"LAH",
+	"JB",
+	"FL",
+	"UNK",
+	"INV"
+};
+
+const char *distanceTierColors[DISTANCETIER_COUNT] = {
+	"{grey}",
+	"{grey}",
+	"{blue}",
+	"{green}",
+	"{darkred}",
+	"{gold}",
+	"{orchid}"
+};
+
+const char *distanceTierNames[DISTANCETIER_COUNT] = {
+	"None",
+	"Meh",
+	"Impressive",
+	"Perfect",
+	"Godlike",
+	"Ownage",
+	"Wrecker"
+};
+
+// clang-format on
+
+/*
+ * AACall stuff
+ */
+
+f32 AACall::CalcIdealYaw(bool useRadians)
+{
+	f64 accelspeed;
+	if (this->wishspeed != 0)
+	{
+		accelspeed = this->accel * this->wishspeed * this->surfaceFriction * this->duration;
+	}
+	else
+	{
+		accelspeed = this->accel * this->maxspeed * this->surfaceFriction * this->duration;
+	}
+	if (accelspeed <= 0.0)
+	{
+		return useRadians ? M_PI : RAD2DEG(M_PI);
+	}
+
+	if (this->velocityPre.Length2D() == 0.0)
+	{
+		return 0.0;
+	}
+
+	const f64 wishspeedcapped = hns::jumpstats::GetAirMaxWishspeed();
+	f64 tmp = wishspeedcapped - accelspeed;
+	if (tmp <= 0.0)
+	{
+		return useRadians ? M_PI / 2 : RAD2DEG(M_PI / 2);
+	}
+
+	f64 speed = this->velocityPre.Length2D();
+	if (tmp < speed)
+	{
+		return useRadians ? acos(tmp / speed) : RAD2DEG(acos(tmp / speed));
+	}
+
+	return 0.0;
+}
+
+f32 AACall::CalcMinYaw(bool useRadians)
+{
+	// If your velocity is lower than sv_air_max_wishspeed, any direction will get you gain.
+	const f64 wishspeedcapped = hns::jumpstats::GetAirMaxWishspeed();
+	if (this->velocityPre.Length2D() <= wishspeedcapped)
+	{
+		return 0.0;
+	}
+	return useRadians ? acos(30.0 / this->velocityPre.Length2D()) : RAD2DEG(acos(30.0 / this->velocityPre.Length2D()));
+}
+
+f32 AACall::CalcMaxYaw(bool useRadians)
+{
+	f32 gamma1, numer, denom;
+	gamma1 = AACall::CalcAccelSpeed(true);
+	f32 speed = this->velocityPre.Length2D();
+	const f64 wishspeedcapped = hns::jumpstats::GetAirMaxWishspeed();
+	if (gamma1 <= 2 * wishspeedcapped)
+	{
+		numer = -gamma1;
+		denom = 2 * speed;
+	}
+	else
+	{
+		numer = -wishspeedcapped;
+		denom = speed;
+	}
+	if (denom < fabs(numer))
+	{
+		return this->CalcIdealYaw();
+	}
+
+	return useRadians ? acos(numer / denom) : RAD2DEG(acos(numer / denom));
+}
+
+f32 AACall::CalcAccelSpeed(bool tryMaxSpeed)
+{
+	if (tryMaxSpeed && this->wishspeed == 0)
+	{
+		return this->accel * this->maxspeed * this->surfaceFriction * this->duration;
+	}
+	return this->accel * this->wishspeed * this->surfaceFriction * this->duration;
+}
+
+f32 AACall::CalcIdealGain()
+{
+	// sqrt(v^2+a^2+2*v*a*cos(yaw)
+	// clang-format off
+	
+	const f32 wishspeedcapped = hns::jumpstats::GetAirMaxWishspeed();
+	
+	f32 idealSpeed = sqrt(this->velocityPre.Length2DSqr()
+		+ Min(this->CalcAccelSpeed(true), wishspeedcapped)
+		* Min(this->CalcAccelSpeed(true), wishspeedcapped)
+		+ 2
+		* Min(this->CalcAccelSpeed(true), wishspeedcapped)
+		* this->velocityPre.Length2D()
+		* cos(this->CalcIdealYaw(true))
+	);
+	// clang-format on
+
+	return idealSpeed - this->velocityPre.Length2D();
+}
+
+/*
+ * Strafe stuff
+ */
+
+void Strafe::UpdateCollisionVelocityChange(f32 delta)
+{
+	if (delta < 0.0f)
+	{
+		this->collisionLoss -= delta;
+	}
+	else
+	{
+		this->collisionGain += delta;
+	}
+}
+
+void Strafe::End()
+{
+	for (AACall &call : this->aaCalls)
+	{
+		this->duration += call.duration;
+		// Calculate BA/DA/OL
+		if (call.wishspeed == 0)
+		{
+			if ((CInButtonState::IsButtonPressed(call.buttons, IN_FORWARD, true) && CInButtonState::IsButtonPressed(call.buttons, IN_BACK, true))
+				|| (CInButtonState::IsButtonPressed(call.buttons, IN_MOVELEFT, true)
+					&& CInButtonState::IsButtonPressed(call.buttons, IN_MOVERIGHT, true)))
+			{
+				this->overlap += call.duration;
+			}
+			else
+			{
+				this->deadAir += call.duration;
+			}
+		}
+		else if ((call.velocityPost - call.velocityPre).Length2D() <= JS_EPSILON)
+		{
+			// This gain could just be from quantized float stuff.
+			this->badAngles += call.duration;
+		}
+		// Calculate sync.
+		else if (call.velocityPost.Length2D() - call.velocityPre.Length2D() > JS_EPSILON)
+		{
+			this->syncDuration += call.duration;
+		}
+
+		// Gain/loss.
+		this->maxGain += call.CalcIdealGain();
+		f32 speedDiff = call.velocityPost.Length2D() - call.velocityPre.Length2D();
+		if (speedDiff > 0)
+		{
+			this->airGain += speedDiff;
+		}
+		else
+		{
+			this->airLoss += speedDiff;
+		}
+		f32 externalSpeedDiff = call.externalSpeedDiff;
+		if (externalSpeedDiff > 0)
+		{
+			this->externalGain += externalSpeedDiff;
+		}
+		else
+		{
+			this->externalLoss += externalSpeedDiff;
+		}
+		this->width += fabs(utils::GetAngleDifference(call.currentYaw, call.prevYaw, 180.0f));
+	}
+	this->CalcAngleRatioStats();
+}
+
+bool Strafe::CalcAngleRatioStats()
+{
+	this->arStats.available = false;
+	f32 totalDuration = 0.0f;
+	f32 totalRatios = 0.0f;
+	std::vector<f32> ratios;
+
+	QAngle angles, velAngles;
+	for (AACall &aaCall : this->aaCalls)
+	{
+		if (aaCall.velocityPre.Length2D() == 0)
+		{
+			// Any angle should be a good angle here.
+			// ratio += 0;
+			continue;
+		}
+		VectorAngles(aaCall.velocityPre, velAngles);
+
+		// If no attempt to gain speed was made, use the angle of the last call as a reference,
+		// and add yaw relative to last tick's yaw.
+		// If the velocity is 0 as well, then every angle is a perfect angle.
+		if (aaCall.wishspeed != 0)
+		{
+			VectorAngles(aaCall.wishdir, angles);
+		}
+		else
+		{
+			angles.y = aaCall.prevYaw + utils::GetAngleDifference(aaCall.currentYaw, aaCall.prevYaw, 180.0f);
+		}
+
+		angles -= velAngles;
+		// Get the minimum, ideal, and max yaw for gain.
+		f32 minYaw = utils::NormalizeDeg(aaCall.CalcMinYaw());
+		f32 idealYaw = utils::NormalizeDeg(aaCall.CalcIdealYaw());
+		f32 maxYaw = utils::NormalizeDeg(aaCall.CalcMaxYaw());
+
+		angles.y = utils::NormalizeDeg(angles.y);
+
+		if (this->turnstate == TURN_RIGHT || /* The ideal angle is calculated for left turns, we need to flip it for right turns. */
+			(this->turnstate == TURN_NONE
+			 && fabs(utils::GetAngleDifference(angles.y, idealYaw, 180.0f)) > fabs(utils::GetAngleDifference(-angles.y, idealYaw, 180.0f))))
+		// If we aren't turning at all, take the one closer to the ideal yaw.
+		{
+			angles.y = -angles.y;
+		}
+
+		// It is possible for the player to gain speed here, by pressing the opposite keys
+		// while still turning in the same direction, which results in actual gain...
+		// Usually this happens at the end of a strafe.
+		if (angles.y < 0 && aaCall.velocityPost.Length2D() > aaCall.velocityPre.Length2D())
+		{
+			angles.y = -angles.y;
+		}
+
+		// If the player yaw is way too off, they are probably pressing the wrong key and probably not turning too fast.
+		// So we shouldn't count them into the average calc.
+
+		//	utils::PrintConsoleAll("%f %f %f %f | %f / %f / %f | %f -> %f | %f %f | ws %f wd %f %f %f accel %f fraction %f",
+		//	minYaw, angles.y, idealYaw, maxYaw,
+		//	utils::GetAngleDifference(angles.y, minYaw, 180.0),
+		//	utils::GetAngleDifference(idealYaw, minYaw, 180.0),
+		//	utils::GetAngleDifference(maxYaw, minYaw, 180.0),
+		//	aaCall.velocityPre.Length2D(), aaCall.velocityPost.Length2D(),
+		//	aaCall.velocityPre.x, aaCall.velocityPre.y,
+		//	aaCall.wishspeed,
+		//	aaCall.wishdir.x,
+		//	aaCall.wishdir.y,
+		//	aaCall.wishdir.z,
+		//	aaCall.accel,
+		//	aaCall.duration * ENGINE_FIXED_TICK_RATE);
+		if (angles.y > maxYaw + 20.0f || angles.y < minYaw - 20.0f)
+		{
+			continue;
+		}
+		f32 gainRatio = (aaCall.velocityPost.Length2D() - aaCall.velocityPre.Length2D()) / aaCall.CalcIdealGain();
+		f32 fraction = aaCall.duration * ENGINE_FIXED_TICK_RATE;
+		if (angles.y < minYaw)
+		{
+			totalRatios += -1 * fraction;
+			totalDuration += fraction;
+			ratios.push_back(-1 * fraction);
+			// utils::PrintConsoleAll("No Gain: GR = %f (%f / %f)", gainRatio, aaCall.velocityPost.Length2D()
+			// - aaCall.velocityPre.Length2D(), aaCall.CalcIdealGain());
+			continue;
+		}
+		else if (angles.y < idealYaw)
+		{
+			totalRatios += (gainRatio - 1) * fraction;
+			totalDuration += fraction;
+			ratios.push_back((gainRatio - 1) * fraction);
+			// utils::PrintConsoleAll("Slow Gain: GR = %f (%f / %f)", gainRatio,
+			// aaCall.velocityPost.Length2D() - aaCall.velocityPre.Length2D(),
+			// aaCall.CalcIdealGain());
+		}
+		else if (angles.y < maxYaw)
+		{
+			totalRatios += (1 - gainRatio) * fraction;
+			totalDuration += fraction;
+			ratios.push_back((1 - gainRatio) * fraction);
+			// utils::PrintConsoleAll("Fast Gain: GR = %f (%f / %f)", gainRatio,
+			// aaCall.velocityPost.Length2D() - aaCall.velocityPre.Length2D(),
+			// aaCall.CalcIdealGain());
+		}
+		else
+		{
+			totalRatios += 1.0f;
+			totalDuration += fraction;
+			ratios.push_back(1.0f);
+			// utils::PrintConsoleAll("TooFast Gain: GR = %f (%f / %f)", gainRatio,
+			// aaCall.velocityPost.Length2D() - aaCall.velocityPre.Length2D(),
+			// aaCall.CalcIdealGain());
+		}
+	}
+
+	// This can return nan if the duration is 0, this is intended...
+	if (totalDuration == 0.0f)
+	{
+		return false;
+	}
+	std::sort(ratios.begin(), ratios.end());
+	this->arStats.available = true;
+	this->arStats.average = totalRatios / totalDuration;
+	this->arStats.median = ratios[ratios.size() / 2];
+	this->arStats.max = ratios.back();
+	return true;
+}
+
+/*
+ * Jump stuff
+ */
+
+void Jump::Init()
+{
+	this->takeoffOrigin = this->player->takeoffOrigin;
+	this->adjustedTakeoffOrigin = this->player->takeoffGroundOrigin;
+	this->takeoffVelocity = this->player->takeoffVelocity;
+	this->jumpType = this->player->jumpstats->DetermineJumpType();
+	this->originalJumpType = this->jumpType;
+
+	this->valid = true;
+
+	// Block / failstat / edge fields
+	this->block = 0.0f;
+	this->edge = -1.0f;
+	this->landingEdge = -1.0f;
+	this->miss = 0.0f;
+	this->failstatDistance = 0.0f;
+	this->failstatOffset = 0.0f;
+	this->failstatSync = 0.0f;
+	this->failstatBadAngles = 0.0f;
+	this->failstatGraphCallCount = 0;
+	this->failstatBlockDetected = (this->jumpType != JumpType_LadderJump);
+	this->failstatFailed = false;
+	this->failstatValid = false;
+	this->failstatBlockHeight = this->adjustedTakeoffOrigin.z;
+	this->poseEndedDuration = 0.0f;
+	this->poseEndedSyncDuration = 0.0f;
+	this->poseEndedBadAnglesDuration = 0.0f;
+	this->poseEndedOverlapDuration = 0.0f;
+	this->poseEndedDeadAirDuration = 0.0f;
+
+	// W release tracking.
+	f32 lastPressedTime = this->player->jumpstats->GetLastWPressedTime();
+	this->release = lastPressedTime - g_pKZUtils->GetGlobals()->curtime;
+	if (this->jumpType != JumpType_Fall)
+	{
+		if (this->jumpType == JumpType_WeirdJump)
+		{
+			this->trackingRelease = false;
+			this->release = this->player->jumpstats->GetLastJumpRelease();
+		}
+		else
+		{
+			this->release += g_pKZUtils->GetGlobals()->frametime;
+		}
+	}
+	// We only track release if we are still holding W/S.
+	if (this->release >= 0 && this->trackingRelease)
+	{
+		this->release = 0;
+	}
+}
+
+void Jump::UpdateAACallPost(Vector wishdir, f32 wishspeed, f32 accel)
+{
+	// Use the latest parameters, just in case they changed.
+	Strafe *strafe = this->GetCurrentStrafe();
+	AACall *call = &strafe->aaCalls.back();
+	QAngle currentAngle;
+	this->player->GetAngles(&currentAngle);
+	call->startFraction = this->player->currentMoveData->m_flSubtickStartFraction;
+	call->endFraction = this->player->currentMoveData->m_flSubtickEndFraction;
+	call->maxspeed = this->player->currentMoveData->m_flMaxSpeed;
+	call->currentYaw = currentAngle.y;
+	call->wishdir = wishdir;
+	call->wishspeed = wishspeed;
+	call->accel = accel;
+	call->surfaceFriction = this->player->GetMoveServices()->m_flSurfaceFriction();
+	call->duration = MAX(call->endFraction - call->startFraction, 0.0f) * ENGINE_FIXED_TICK_INTERVAL;
+	call->ducking = this->player->GetMoveServices()->m_bDucked;
+	this->player->GetVelocity(&call->velocityPost);
+
+	// AA only applies at most half of the acceleration to the velocity after AACall.
+	// The rest is applied in TryPlayerMove, but let's just add it here for simplicity.
+	// Technically this is not 100% accurate if the player collides with something,
+	// but it should be close enough.
+	call->velocityPost += this->player->currentMoveData->m_vecFrameVelocityDelta;
+	strafe->UpdateStrafeMaxSpeed(call->velocityPost.Length2D());
+
+	// Check if we are still tracking release for the strafe.
+	if (strafe->jump->trackingRelease)
+	{
+		if (this->player->currentMoveData->m_flForwardMove > 0)
+		{
+			strafe->jump->release += g_pKZUtils->GetGlobals()->frametime;
+		}
+		else
+		{
+			strafe->jump->trackingRelease = false;
+		}
+	}
+}
+
+void Jump::Update()
+{
+	if (this->AlreadyEnded())
+	{
+		return;
+	}
+	this->totalDistance += (this->player->currentMoveData->m_vecAbsOrigin - this->player->moveDataPre.m_vecAbsOrigin).Length2D();
+	this->currentMaxSpeed = MAX(this->player->currentMoveData->m_vecVelocity.Length2D(), this->currentMaxSpeed);
+	this->currentMaxHeight = MAX(this->player->currentMoveData->m_vecAbsOrigin.z - this->adjustedTakeoffOrigin.z, this->currentMaxHeight);
+
+	this->RecordPose();
+	this->UpdateFailstat();
+}
+
+void Jump::End()
+{
+	this->Update();
+	if (!this->strafes.empty())
+	{
+		this->strafes.back().End();
+		this->CacheEndedStrafePoseTotals(this->strafes.back());
+	}
+	this->landingOrigin = this->player->landingOrigin;
+	this->adjustedLandingOrigin = this->player->landingOriginActual;
+	// This is not the real jump duration, it's just here to calculate sync.
+	f32 jumpDuration = 0.0f;
+
+	// Reset aggregate stats in case they were temporarily populated during failstat probing.
+	this->width = 0.0f;
+	this->overlap = 0.0f;
+	this->deadAir = 0.0f;
+	this->badAngles = 0.0f;
+	this->sync = 0.0f;
+	this->duckDuration = 0.0f;
+	this->duckEndDuration = 0.0f;
+
+	f32 gain = 0.0f;
+	f32 maxGain = 0.0f;
+	for (Strafe &strafe : this->strafes)
+	{
+		for (const AACall &call : strafe.aaCalls)
+		{
+			if (call.ducking)
+			{
+				this->duckDuration += call.duration;
+				this->duckEndDuration += call.duration;
+			}
+			else
+			{
+				this->duckEndDuration = 0.0f;
+			}
+		}
+		this->width += strafe.GetWidth();
+		this->overlap += strafe.GetOverlapDuration();
+		this->deadAir += strafe.GetDeadAirDuration();
+		this->badAngles += strafe.GetBadAngleDuration();
+		this->sync += strafe.GetSyncDuration();
+		jumpDuration += strafe.GetStrafeDuration();
+		gain += strafe.GetGain();
+		maxGain += strafe.GetMaxGain();
+	}
+	this->width /= this->strafes.size();
+	this->overlap /= jumpDuration;
+	this->deadAir /= jumpDuration;
+	this->badAngles /= jumpDuration;
+	this->sync /= jumpDuration;
+	this->ended = true;
+	this->gainEff = gain / maxGain;
+
+	if (this->failstatValid)
+	{
+		// Keep failstat estimate; failstatValid is already managed live in UpdateFailstat().
+		f32 failBlock = this->block;
+		f32 failEdge = this->edge;
+		f32 failMiss = this->miss;
+
+		this->EndBlockDistance();
+
+		// Keep failstat estimation for reporting.
+		this->block = failBlock;
+		this->edge = failEdge;
+		this->miss = failMiss;
+	}
+	else
+	{
+		this->EndBlockDistance();
+	}
+
+	bool jsAlways = this->player->jumpstats->GetPrefs().always;
+	if (!this->failstatValid && jsAlways && this->block == 0.0f)
+	{
+		this->AlwaysFailstat();
+	}
+	else if (this->failstatValid && this->miss <= 0.0f)
+	{
+		// Recover miss from always-failstat traces without clobbering failstat metrics.
+		f32 failBlock = this->block;
+		f32 failEdge = this->edge;
+		f32 failDistance = this->failstatDistance;
+		f32 failOffset = this->failstatOffset;
+		f32 failAirtime = this->airtime;
+		f32 failBadAngles = this->badAngles;
+		f32 failOverlap = this->overlap;
+		f32 failDeadAir = this->deadAir;
+		f32 failSync = this->sync;
+		f32 failstatBadAngles = this->failstatBadAngles;
+		bool hadValidFailstat = this->failstatValid;
+
+		this->failstatValid = false;
+		this->AlwaysFailstat();
+		f32 failMiss = this->miss;
+
+		this->block = failBlock;
+		this->edge = failEdge;
+		this->failstatDistance = failDistance;
+		this->failstatOffset = failOffset;
+		this->airtime = failAirtime;
+		this->badAngles = failBadAngles;
+		this->overlap = failOverlap;
+		this->deadAir = failDeadAir;
+		this->sync = failSync;
+		this->failstatBadAngles = failstatBadAngles;
+		this->failstatValid = hadValidFailstat;
+		this->miss = failMiss;
+	}
+
+	// If there's no air time at all then that was definitely not a jump.
+	// Happens when player touches the ground from a ladder.
+	if (jumpDuration == 0.0f)
+	{
+		this->jumpType = JumpType_FullInvalid;
+	}
+	else if (!this->failstatValid)
+	{
+		// Airtime caps apply to landed jumps; failstats are evaluated at fail-plane crossing.
+		bool exceededAirtimeCap = false;
+		switch (this->jumpType)
+		{
+			case JumpType_LadderJump:
+			{
+				if (jumpDuration > 1.04)
+				{
+					exceededAirtimeCap = true;
+				}
+				break;
+			}
+			case JumpType_LongJump:
+			case JumpType_Bhop:
+			case JumpType_MultiBhop:
+			case JumpType_WeirdJump:
+			case JumpType_Ladderhop:
+			case JumpType_Jumpbug:
+			{
+				if (jumpDuration > 0.8)
+				{
+					exceededAirtimeCap = true;
+				}
+				break;
+			}
+		}
+
+		if (exceededAirtimeCap)
+		{
+			this->valid = false;
+			this->jumpType = JumpType_Invalid;
+		}
+	}
+	this->serverTick = g_pKZUtils->GetServerGlobals()->tickcount;
+	this->airtime = this->player->landingTimeActual - this->player->takeoffTime;
+}
+
+Strafe *Jump::GetCurrentStrafe()
+{
+	// Always start with 1 strafe.
+	if (this->strafes.empty())
+	{
+		this->strafes.push_back({this});
+		this->strafes.back().turnstate = this->player->GetTurning();
+	}
+	// If the player isn't turning, update the turn state until it changes.
+	else if (!this->strafes.back().turnstate)
+	{
+		this->strafes.back().turnstate = this->player->GetTurning();
+	}
+	// Otherwise, if the strafe is in opposite direction, we add a new strafe.
+	else if (this->strafes.back().turnstate == -this->player->GetTurning())
+	{
+		this->strafes.back().End();
+		this->CacheEndedStrafePoseTotals(this->strafes.back());
+		// Finish the previous strafe before adding a new strafe.
+		Strafe strafe = Strafe(this);
+		strafe.turnstate = this->player->GetTurning();
+		this->strafes.push_back(strafe);
+	}
+	// Turn state didn't change, it's the same strafe. No need to do anything.
+
+	return &this->strafes.back();
+}
+
+void Jump::CacheEndedStrafePoseTotals(Strafe &strafe)
+{
+	this->poseEndedDuration += strafe.GetStrafeDuration();
+	this->poseEndedSyncDuration += strafe.GetSyncDuration();
+	this->poseEndedBadAnglesDuration += strafe.GetBadAngleDuration();
+	this->poseEndedOverlapDuration += strafe.GetOverlapDuration();
+	this->poseEndedDeadAirDuration += strafe.GetDeadAirDuration();
+}
+
+f32 Jump::GetDistance(bool useDistbugFix, bool disableAddDist, i32 floorLevel)
+{
+	if (this->IsFailstat() && this->failstatDistance > 0.0f && useDistbugFix && !disableAddDist)
+	{
+		return floorLevel < 0 ? this->failstatDistance : floor(this->failstatDistance * pow(10, floorLevel)) / pow(10, floorLevel);
+	}
+
+	f32 dist = 32.0f;
+	if (this->jumpType == JumpType_LadderJump || disableAddDist)
+	{
+		dist = 0.0f;
+	}
+	if (useDistbugFix)
+	{
+		dist += (this->adjustedLandingOrigin - this->adjustedTakeoffOrigin).Length2D();
+	}
+	else
+	{
+		dist += (this->landingOrigin - this->takeoffOrigin).Length2D();
+	}
+	return floorLevel < 0 ? dist : floor(dist * pow(10, floorLevel)) / pow(10, floorLevel);
+}
+
+JumpType Jump::GetReportJumpType()
+{
+	if (this->IsFailstat())
+	{
+		return this->originalJumpType;
+	}
+	if (!this->IsValid() && this->player->jumpstats->GetPrefs().always)
+	{
+		return this->originalJumpType;
+	}
+	return this->jumpType;
+}
+
+f32 Jump::GetAirPath()
+{
+	if (this->IsFailstat())
+	{
+		if (this->failstatTotalDistance <= 0.0f || this->failstatDistance <= 0.0f)
+		{
+			return 0.0f;
+		}
+		// failstatDistance includes +32 for non-ladder jumps (hull offset convention).
+		// Strip it to match what GetDistance(false, true) does for regular jumps.
+		f32 rawDist = this->failstatDistance;
+		if (this->GetReportJumpType() != JumpType_LadderJump)
+		{
+			rawDist -= 32.0f;
+		}
+		if (rawDist <= 0.0f)
+		{
+			return 0.0f;
+		}
+		return this->failstatTotalDistance / rawDist;
+	}
+	if (this->totalDistance <= 0.0f)
+	{
+		return 0.0;
+	}
+	return this->totalDistance / this->GetDistance(false, true);
+}
+
+f32 Jump::GetDeviation()
+{
+	f32 distanceX = fabs(adjustedLandingOrigin.x - adjustedTakeoffOrigin.x);
+	f32 distanceY = fabs(adjustedLandingOrigin.y - adjustedTakeoffOrigin.y);
+	if (distanceX > distanceY)
+	{
+		return distanceY;
+	}
+	return distanceX;
+}
+
+f32 Jump::GetSignedDeviation()
+{
+	f32 deltaX = adjustedLandingOrigin.x - adjustedTakeoffOrigin.x;
+	f32 deltaY = adjustedLandingOrigin.y - adjustedTakeoffOrigin.y;
+	// The jump runs along the longer axis. Facing along it, left is +Y when heading +X, -X when heading +Y, and so on.
+	if (fabs(deltaX) > fabs(deltaY))
+	{
+		return deltaX >= 0.0f ? deltaY : -deltaY;
+	}
+	return deltaY >= 0.0f ? -deltaX : deltaX;
+}
+
+JumpType HNSJumpstatsService::DetermineJumpType()
+{
+	if (this->jumps.size() <= 1 || this->JustTeleported())
+	{
+		return JumpType_Invalid;
+	}
+	if (this->player->takeoffFromLadder)
+	{
+		f32 ignoreLadderJumpTime = this->player->GetPlayerPawn()->m_ignoreLadderJumpTime();
+
+		bool ignoringLadder = ignoreLadderJumpTime > g_pKZUtils->GetGlobals()->curtime - ENGINE_FIXED_TICK_INTERVAL;
+		bool holdingJumpDuringIgnoreLadderPeriod =
+			this->player->jumpstats->lastJumpButtonTime > ignoreLadderJumpTime - IGNORE_JUMP_TIME
+			&& this->player->jumpstats->lastJumpButtonTime < ignoreLadderJumpTime + ENGINE_FIXED_TICK_INTERVAL;
+
+		if (ignoringLadder && holdingJumpDuringIgnoreLadderPeriod)
+		{
+			return JumpType_Invalid;
+		}
+		if (this->player->jumped)
+		{
+			if (this->player->GetMoveServices()->m_vecLadderNormal().z > EPSILON || !this->player->possibleLadderHop
+				|| this->player->takeoffOrigin.z - this->player->takeoffGroundOrigin.z > JS_EPSILON * 2)
+			{
+				return JumpType_Invalid;
+			}
+			// Mark this as a ladder hop, so if the player jumps again, we don't add a new jump.
+			this->ladderHopThisMove = true;
+			return JumpType_Ladderhop;
+		}
+		else
+		{
+			if (fabs(this->player->GetMoveServices()->m_vecLadderNormal().z) > EPSILON)
+			{
+				return JumpType_Invalid;
+			}
+			return JumpType_LadderJump;
+		}
+	}
+	if (!this->player->jumped)
+	{
+		return JumpType_Fall;
+	}
+	if (this->jumps.size() >= 2)
+	{
+		Jump &previousJump = this->jumps[this->jumps.size() - 2];
+		if (this->player->duckBugged)
+		{
+			if (previousJump.IsValid() && previousJump.GetOffset() < JS_EPSILON && previousJump.GetJumpType() == JumpType_LongJump)
+			{
+				return JumpType_Jumpbug;
+			}
+			else
+			{
+				return JumpType_Invalid;
+			}
+		}
+		if (this->HitBhop() && !this->HitDuckbugRecently())
+		{
+			// Check for no offset
+			if (previousJump.DidHitHead() || !previousJump.IsValid())
+			{
+				return JumpType_Invalid;
+			}
+			if (fabs(previousJump.GetOffset()) < JS_EPSILON)
+			{
+				switch (previousJump.GetJumpType())
+				{
+					case JumpType_LongJump:
+						return JumpType_Bhop;
+					case JumpType_Bhop:
+						return JumpType_MultiBhop;
+					case JumpType_MultiBhop:
+						return JumpType_MultiBhop;
+					default:
+						return JumpType_Other;
+				}
+			}
+			// Check for weird jump
+			if (previousJump.GetJumpType() == JumpType_Fall && this->ValidWeirdJumpDropDistance())
+			{
+				return JumpType_WeirdJump;
+			}
+
+			return JumpType_Other;
+		}
+	}
+	if (this->HitDuckbugRecently() || !this->GroundSpeedCappedRecently())
+	{
+		return JumpType_Invalid;
+	}
+	return JumpType_LongJump;
+}
+
+f32 HNSJumpstatsService::GetLastJumpRelease()
+{
+	if (this->jumps.size() <= 2)
+	{
+		return 0.0f;
+	}
+	Jump &previousJump = this->jumps[this->jumps.size() - 2];
+	return previousJump.release;
+}
+
+bool HNSJumpstatsService::JustTeleported(f32 threshold)
+{
+	return g_pKZUtils->GetServerGlobals()->curtime - this->lastTeleportTime < threshold;
+}
+
+void HNSJumpstatsService::Reset()
+{
+	this->jumps.clear();
+	this->lastJumpButtonTime = {};
+	this->lastNoclipTime = {};
+	this->lastDuckbugTime = {};
+	this->lastGroundSpeedCappedTime = {};
+	this->lastMovementProcessedTime = {};
+	this->tpmVelocity = Vector(0, 0, 0);
+	this->possibleEdgebug = {};
+	this->lastWPressedTime = {};
+	this->ladderHopThisMove = false;
+	this->lastTeleportTime = {};
+	// Preferences are re-read from the cfg defaults on the next jump (new player in this slot).
+	this->prefs = JSPrefs();
+}
+
+void HNSJumpstatsService::OnProcessMovement()
+{
+	// Always ensure that the player has at least an ongoing jump.
+	// This is mostly to prevent crash, it's not a valid jump.
+	if (this->jumps.empty())
+	{
+		this->AddJump();
+		this->InvalidateJumpstats("First jump");
+		return;
+	}
+	this->CheckValidMoveType();
+	this->DetectExternalModifications();
+
+	if (this->player->currentMoveData->m_flForwardMove > 0)
+	{
+		this->lastWPressedTime = g_pKZUtils->GetGlobals()->curtime;
+	}
+}
+
+void HNSJumpstatsService::OnChangeMoveType(MoveType_t oldMoveType)
+{
+	if (oldMoveType == MOVETYPE_LADDER && this->player->GetPlayerPawn()->m_MoveType() == MOVETYPE_WALK)
+	{
+		this->AddJump();
+	}
+	else if (oldMoveType == MOVETYPE_WALK && this->player->GetPlayerPawn()->m_MoveType() == MOVETYPE_LADDER)
+	{
+		// Not really a valid jump for jumpstats purposes.
+		this->InvalidateJumpstats("Invalid movetype change");
+		this->EndJump();
+	}
+}
+
+bool HNSJumpstatsService::HitBhop()
+{
+	return this->player->takeoffTime - this->player->landingTime < JS_MAX_BHOP_GROUND_TIME;
+}
+
+bool HNSJumpstatsService::HitDuckbugRecently()
+{
+	return g_pKZUtils->GetGlobals()->curtime - this->lastDuckbugTime <= JS_MAX_DUCKBUG_RESET_TIME;
+}
+
+bool HNSJumpstatsService::ValidWeirdJumpDropDistance()
+{
+	if (this->jumps.size() <= 2)
+	{
+		return false;
+	}
+	Jump &previousJump = this->jumps[this->jumps.size() - 2];
+	return previousJump.GetOffset() > -1 * JS_MAX_WEIRDJUMP_FALL_OFFSET;
+}
+
+bool HNSJumpstatsService::GroundSpeedCappedRecently()
+{
+	return this->lastGroundSpeedCappedTime == this->lastMovementProcessedTime;
+}
+
+void HNSJumpstatsService::OnAirAccelerate()
+{
+	if (g_pKZUtils->GetGlobals()->frametime == 0.0f)
+	{
+		return;
+	}
+	AACall call;
+	this->player->GetMoveServices()->m_nButtons().GetButtons(call.buttons);
+	this->player->GetVelocity(&call.velocityPre);
+
+	// moveDataPost is still the movedata from last tick.
+	call.externalSpeedDiff = call.velocityPre.Length2D() - this->player->moveDataPost.m_vecVelocity.Length2D();
+	call.prevYaw = this->player->oldAngles.y;
+	Strafe *strafe = this->jumps.back().GetCurrentStrafe();
+	strafe->aaCalls.push_back(call);
+}
+
+void HNSJumpstatsService::OnAirAcceleratePost(Vector wishdir, f32 wishspeed, f32 accel)
+{
+	if (g_pKZUtils->GetGlobals()->frametime == 0.0f)
+	{
+		return;
+	}
+	this->jumps.back().UpdateAACallPost(wishdir, wishspeed, accel);
+}
+
+void HNSJumpstatsService::AddJump()
+{
+	if (ladderHopThisMove)
+	{
+		return;
+	}
+	// Clear the shared pose buffer for the new jump before its failstat tracking begins.
+	this->poseHistory.Advance(this->poseHistory.GetReadAvailable());
+	this->jumps.push_back({this->player});
+	this->jumps.back().Init();
+}
+
+void HNSJumpstatsService::UpdateJump()
+{
+	if (!this->jumps.empty())
+	{
+		this->jumps.back().Update();
+	}
+	this->DetectInvalidCollisions();
+	this->DetectInvalidGains();
+	this->DetectNoclip();
+}
+
+void HNSJumpstatsService::EndJump()
+{
+	if (this->jumps.empty())
+	{
+		return;
+	}
+	Jump *jump = &this->jumps.back();
+
+	// Prevent stats being calculated twice.
+	if (jump->AlreadyEnded())
+	{
+		return;
+	}
+	jump->End();
+	if (jump->GetJumpType() == JumpType_FullInvalid)
+	{
+		return;
+	}
+	HNSJumpstatsService::AnnounceJump(jump);
+}
+
+void HNSJumpstatsService::HandleTeleport()
+{
+	if (this->jumps.empty())
+	{
+		return;
+	}
+
+	Jump *jump = &this->jumps.back();
+	if (jump->AlreadyEnded())
+	{
+		return;
+	}
+
+	Vector preTeleportOrigin;
+	this->player->GetOrigin(&preTeleportOrigin);
+
+	// Teleports are not real landings. Use the pre-teleport origin/time as a synthetic landing snapshot.
+	this->player->landingOrigin = preTeleportOrigin;
+	this->player->landingOriginActual = preTeleportOrigin;
+	this->player->landingTime = g_pKZUtils->GetGlobals()->curtime;
+	this->player->landingTimeServer = g_pKZUtils->GetServerGlobals()->curtime;
+	this->player->landingTimeActual = this->player->landingTime;
+	this->player->landingVelocity = this->player->currentMoveData->m_vecVelocity;
+
+	jump->Invalidate("Teleported");
+	this->EndJump();
+}
+
+void HNSJumpstatsService::InvalidateJumpstats(const char *reason)
+{
+	if (!this->jumps.empty() && !this->jumps.back().AlreadyEnded())
+	{
+		this->jumps.back().Invalidate(reason);
+	}
+}
+
+void HNSJumpstatsService::TrackJumpstatsVariables()
+{
+	if (this->player->IsButtonPressed(IN_JUMP))
+	{
+		this->lastJumpButtonTime = g_pKZUtils->GetGlobals()->curtime;
+	}
+	if (this->player->GetPlayerPawn()->m_MoveType == MOVETYPE_NOCLIP || this->player->GetPlayerPawn()->m_nActualMoveType == MOVETYPE_NOCLIP)
+	{
+		this->lastNoclipTime = g_pKZUtils->GetGlobals()->curtime;
+	}
+	if (this->player->duckBugged)
+	{
+		this->lastDuckbugTime = g_pKZUtils->GetGlobals()->curtime;
+	}
+	if (this->player->walkMoved)
+	{
+		this->lastGroundSpeedCappedTime = g_pKZUtils->GetGlobals()->curtime;
+	}
+	this->lastMovementProcessedTime = g_pKZUtils->GetGlobals()->curtime;
+}
+
+void HNSJumpstatsService::OnTryPlayerMove()
+{
+	this->tpmVelocity = this->player->currentMoveData->m_vecVelocity;
+}
+
+void HNSJumpstatsService::OnTryPlayerMovePost()
+{
+	if (this->jumps.empty() || this->jumps.back().strafes.empty())
+	{
+		return;
+	}
+	f32 velocity = this->player->currentMoveData->m_vecVelocity.Length2D() - this->tpmVelocity.Length2D();
+	this->jumps.back().strafes.back().UpdateCollisionVelocityChange(velocity);
+	this->DetectEdgebug();
+
+	FOR_EACH_VEC(this->player->currentMoveData->m_TouchList, i)
+	{
+		if (fabs(this->player->currentMoveData->m_TouchList[i].trace.m_vHitNormal.x) > JS_EPSILON
+			|| fabs(this->player->currentMoveData->m_TouchList[i].trace.m_vHitNormal.y) > JS_EPSILON)
+		{
+			this->InvalidateJumpstats("Invalid collision");
+		}
+	}
+}
+
+void HNSJumpstatsService::OnProcessMovementPost()
+{
+	if (this->possibleEdgebug && !(this->player->GetPlayerPawn()->m_fFlags() & FL_ONGROUND))
+	{
+		this->InvalidateJumpstats("Edgebugged");
+	}
+	this->possibleEdgebug = false;
+	this->ladderHopThisMove = false;
+	this->TrackJumpstatsVariables();
+	this->DetectWater();
+}

@@ -1,0 +1,271 @@
+// Copied from CS2KZ src/utils/tables.h (AGPL-3.0), unchanged.
+#pragma once
+#include "common.h"
+#include <vector>
+
+namespace utils
+{
+	// A table with column sizes that adapts to the content.
+	// The table column count must be defined in compile time!
+	template<size_t N>
+	class Table
+	{
+		static_assert(N > 0, "There must be at least 1 column"); // Compile-time check
+
+	public:
+		static constexpr const size_t columnCount = N;
+
+		Table(CUtlString title, CUtlString headers[columnCount]) : title(title)
+		{
+			for (u32 i = 0; i < columnCount; i++)
+			{
+				this->headers[i] = headers[i];
+				this->headers[i].Append("ᅟ"); // Add a space to reset the "font" to monospace
+				columnLengths[i] = GetDisplayByteLength(this->headers[i].Get());
+			}
+		}
+
+		Table(const char *title, const char *headers[columnCount]) : title(title)
+		{
+			for (u32 i = 0; i < columnCount; i++)
+			{
+				this->headers[i] = headers[i];
+				this->headers[i].Append("ᅟ"); // Add a space to reset the "font" to monospace
+				columnLengths[i] = GetDisplayByteLength(this->headers[i].Get());
+			}
+		}
+
+	private:
+		static constexpr const char *fontResetSuffix = "ᅟ";
+
+		static u32 GetUtf8CodepointCount(const char *value, u32 byteCount)
+		{
+			u32 codepoints = 0;
+			for (u32 i = 0; i < byteCount; i++)
+			{
+				unsigned char c = static_cast<unsigned char>(value[i]);
+				if ((c & 0xC0) != 0x80)
+				{
+					codepoints++;
+				}
+			}
+			return codepoints;
+		}
+
+		static bool EndsWithFontResetSuffix(const char *value, u32 length)
+		{
+			const u32 suffixLength = static_cast<u32>(V_strlen(fontResetSuffix));
+			if (length < suffixLength)
+			{
+				return false;
+			}
+			return V_strncmp(value + (length - suffixLength), fontResetSuffix, suffixLength) == 0;
+		}
+
+		static u32 GetDisplayByteLength(const char *value)
+		{
+			u32 length = static_cast<u32>(V_strlen(value));
+			if (EndsWithFontResetSuffix(value, length))
+			{
+				length -= static_cast<u32>(V_strlen(fontResetSuffix));
+			}
+			return length;
+		}
+
+		static u32 GetDisplayPadding(const char *value)
+		{
+			u32 displayBytes = GetDisplayByteLength(value);
+			u32 displayCodepoints = GetUtf8CodepointCount(value, displayBytes);
+			return displayBytes > displayCodepoints ? displayBytes - displayCodepoints : 0;
+		}
+
+		struct TableEntry
+		{
+			CUtlString data[columnCount];
+		};
+
+		CUtlString title;
+		std::vector<TableEntry> entries;
+		CUtlString headers[columnCount];
+		u32 columnLengths[columnCount];
+
+	public:
+		bool Set(u32 row, u32 column, const char *value)
+		{
+			if (column >= columnCount)
+			{
+				return false;
+			}
+			if (row >= entries.size())
+			{
+				entries.resize(row + 1);
+			}
+			entries[row].data[column] = value;
+			entries[row].data[column].Append("ᅟ"); // Add a space to reset the "font" to monospace
+			columnLengths[column] = MAX(columnLengths[column], GetDisplayByteLength(entries[row].data[column].Get()));
+			return true;
+		}
+
+		bool Set(u32 row, u32 column, CUtlString value)
+		{
+			return Set(row, column, value.Get());
+		}
+
+		template<typename... Args>
+		void SetRow(u32 row, const Args &...args)
+		{
+			static_assert(sizeof...(args) == N, "Number of arguments must match the column count");
+			if (row >= entries.size())
+			{
+				entries.resize(row + 1);
+			}
+			entries[row] = {args...};
+			for (u32 i = 0; i < columnCount; i++)
+			{
+				entries[row].data[i].Append("ᅟ"); // Add a space to reset the "font" to monospace
+				columnLengths[i] = MAX(columnLengths[i], GetDisplayByteLength(entries[row].data[i].Get()));
+			}
+		}
+
+		TableEntry GetEntry(u32 row)
+		{
+			return entries[row];
+		}
+
+		u32 GetTableWidth()
+		{
+			// N-1 gap, but there are two spaces between each column.
+			u32 result = (columnCount - 1) * 2;
+			for (u32 i = 0; i < columnCount; i++)
+			{
+				result += columnLengths[i];
+			}
+			return MAX(result, (u32)title.Length());
+		}
+
+		CUtlString GetTitle()
+		{
+			return title;
+		}
+
+		CUtlString GetHeader()
+		{
+			CUtlString result;
+			const u32 fontResetSuffixLength = static_cast<u32>(V_strlen(fontResetSuffix));
+			for (u32 i = 0; i < columnCount; i++)
+			{
+				CUtlString value;
+				value.Format("%-*s%s", columnLengths[i] + GetDisplayPadding(headers[i].Get()) + fontResetSuffixLength, headers[i].Get(),
+							 i == columnCount - 1 ? "" : "  ");
+				for (i32 i = 0; i < value.Length() - 1; i++)
+				{
+					if (value[i] == '%' && value[i + 1] == '%')
+					{
+						value.Append(" ");
+						i++;
+					}
+				}
+				result.Append(value.Get());
+			}
+			return result;
+		}
+
+		CUtlString GetLine(u32 row)
+		{
+			if (row >= entries.size())
+			{
+				return "";
+			}
+			CUtlString result;
+			const u32 fontResetSuffixLength = static_cast<u32>(V_strlen(fontResetSuffix));
+			for (u32 i = 0; i < columnCount; i++)
+			{
+				CUtlString value;
+				value.Format("%-*s%s", columnLengths[i] + GetDisplayPadding(entries[row].data[i].Get()) + fontResetSuffixLength,
+							 entries[row].data[i].Get(), i == columnCount - 1 ? "" : "  ");
+				for (i32 i = 0; i < value.Length() - 1; i++)
+				{
+					if (value[i] == '%' && value[i + 1] == '%')
+					{
+						value.Append(" ");
+						i++;
+					}
+				}
+				result.Append(value.Get());
+			}
+			return result;
+		}
+
+		CUtlString GetSeparator(const char *characters = "_")
+		{
+			CUtlString result;
+			for (u32 i = 0; i < GetTableWidth(); i++)
+			{
+				result += characters;
+			}
+			return result;
+		}
+
+		u32 GetNumEntries()
+		{
+			return entries.size();
+		}
+	};
+
+	// Side by side dual table
+	template<size_t NL, size_t NR>
+	class DualTable
+	{
+	public:
+		Table<NL> left;
+		Table<NR> right;
+
+		DualTable(CUtlString titleLeft, CUtlString headersLeft[NL], CUtlString titleRight, CUtlString headersRight[NR])
+			: left(titleLeft, headersLeft), right(titleRight, headersRight)
+		{
+		}
+
+		DualTable(const char *titleLeft, const char *headersLeft[NL], const char *titleRight, const char *headersRight[NR])
+			: left(titleLeft, headersLeft), right(titleRight, headersRight)
+		{
+		}
+
+		CUtlString GetTitle()
+		{
+			CUtlString result;
+			result.Format("%-*s\t|\t%-*s", left.GetTableWidth(), left.GetTitle().Get(), right.GetTableWidth(), right.GetTitle().Get());
+			return result;
+		}
+
+		CUtlString GetHeader()
+		{
+			CUtlString result;
+			result.Format("%-*s\t|\t%-*s", left.GetTableWidth(), left.GetHeader().Get(), right.GetTableWidth(), right.GetHeader().Get());
+			return result;
+		}
+
+		CUtlString GetLine(u32 row)
+		{
+			if (row >= GetNumEntries())
+			{
+				return "";
+			}
+			CUtlString result;
+			result.Format("%-*s\t|\t%-*s", left.GetTableWidth(), left.GetLine(row).Get(), right.GetTableWidth(), right.GetLine(row).Get());
+			return result;
+		}
+
+		CUtlString GetSeparator(const char *characters = "_")
+		{
+			CUtlString result;
+			result.Format("%-*s \t|\t %-*s", left.GetTableWidth(), left.GetSeparator(characters).Get(), right.GetTableWidth(),
+						  right.GetSeparator(characters).Get());
+			return result;
+		}
+
+		u32 GetNumEntries()
+		{
+			return MAX(left.GetNumEntries(), right.GetNumEntries());
+		}
+	};
+} // namespace utils

@@ -1,4 +1,5 @@
 #include "hns_commands.h"
+#include "jumpstats/jumpstats.h"
 #include "hns_config.h"
 #include "hns_cvars.h"
 #include "hns_player.h"
@@ -151,6 +152,16 @@ namespace hns::commands
 			word[len++] = *c;
 		}
 		word[len] = '\0';
+		// Jumpstats commands take an argument (!jstier 3): the text after the word, without leading spaces.
+		const char *argument = text + 1 + len;
+		while (*argument == ' ')
+		{
+			argument++;
+		}
+		if (hns::jumpstats::OnChatCommand(slot, word, argument))
+		{
+			return prefix == '/';
+		}
 		for (const ChatCommand &command : chatCommands)
 		{
 			if (V_stricmp(word, command.name) == 0)
