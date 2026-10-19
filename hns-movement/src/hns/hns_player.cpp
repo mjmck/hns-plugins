@@ -4,6 +4,7 @@
 #include "hns_config.h"
 #include "hns_hud.h"
 #include "hns_joinsound.h"
+#include "jumpstats/js_jumpstats.h"
 #include "hns_gameplay.h"
 #include "hns_weapons.h"
 #include "utils/utils.h"
@@ -28,6 +29,8 @@ void HNSPlayer::DestroyServices()
 {
 	delete this->movement;
 	this->movement = nullptr;
+	delete this->jumpstats;
+	this->jumpstats = nullptr;
 }
 
 void HNSPlayer::Init()
@@ -35,12 +38,14 @@ void HNSPlayer::Init()
 	MovementPlayer::Init();
 	this->DestroyServices();
 	this->movement = new HNSMovementService(this);
+	this->jumpstats = new HNSJumpstatsService(this);
 }
 
 void HNSPlayer::Reset()
 {
 	MovementPlayer::Reset();
 	this->movement->Reset();
+	this->jumpstats->Reset();
 	this->stats = {};
 	hns::hud::OnPlayerReset(this);
 	hns::joinsound::OnPlayerReset(this);
@@ -106,12 +111,15 @@ void HNSPlayer::OnProcessMovement()
 	this->enableWaterFix = this->movement->EnableWaterFix();
 	this->movement->OnProcessMovement();
 	hns::gameplay::ApplyFreezeToMovement(this);
+	this->jumpstats->OnProcessMovement();
 }
 
 void HNSPlayer::OnProcessMovementPost()
 {
 	VPROF_BUDGET(__func__, "HNS");
+	this->jumpstats->UpdateJump();
 	this->movement->OnProcessMovementPost();
+	this->jumpstats->OnProcessMovementPost();
 	if (hns::gameplay::IsFrozen(this) && this->GetPlayerPawn())
 	{
 		// Networked: the client predicts zero speed too, so a frozen CT does not rubber-band when pressing keys.
@@ -145,6 +153,16 @@ void HNSPlayer::OnAirMovePost()
 	this->movement->OnAirMovePost();
 }
 
+void HNSPlayer::OnAirAccelerate(Vector &wishdir, f32 &wishspeed, f32 &accel)
+{
+	this->jumpstats->OnAirAccelerate();
+}
+
+void HNSPlayer::OnAirAcceleratePost(Vector wishdir, f32 wishspeed, f32 accel)
+{
+	this->jumpstats->OnAirAcceleratePost(wishdir, wishspeed, accel);
+}
+
 void HNSPlayer::OnWaterMove()
 {
 	this->movement->OnWaterMove();
@@ -158,11 +176,13 @@ void HNSPlayer::OnWaterMovePost()
 void HNSPlayer::OnTryPlayerMove(Vector *pFirstDest, trace_t *pFirstTrace, bool *bIsSurfing)
 {
 	this->movement->OnTryPlayerMove(pFirstDest, pFirstTrace, bIsSurfing);
+	this->jumpstats->OnTryPlayerMove();
 }
 
 void HNSPlayer::OnTryPlayerMovePost(Vector *pFirstDest, trace_t *pFirstTrace, bool *bIsSurfing)
 {
 	this->movement->OnTryPlayerMovePost(pFirstDest, pFirstTrace, bIsSurfing);
+	this->jumpstats->OnTryPlayerMovePost();
 }
 
 // ============================================================
@@ -172,6 +192,7 @@ void HNSPlayer::OnTryPlayerMovePost(Vector *pFirstDest, trace_t *pFirstTrace, bo
 void HNSPlayer::OnStartTouchGround()
 {
 	VPROF_BUDGET(__func__, "HNS");
+	this->jumpstats->EndJump();
 	this->movement->OnStartTouchGround();
 }
 
@@ -192,6 +213,7 @@ void HNSPlayer::OnStopTouchGround()
 	}
 
 	this->movement->OnStopTouchGround();
+	this->jumpstats->AddJump();
 
 	if (this->jumped)
 	{
@@ -225,11 +247,13 @@ void HNSPlayer::OnChangeMoveType(MoveType_t oldMoveType)
 {
 	VPROF_BUDGET(__func__, "HNS");
 	this->movement->OnChangeMoveType(oldMoveType);
+	this->jumpstats->OnChangeMoveType(oldMoveType);
 }
 
 void HNSPlayer::OnTeleport(const Vector *origin, const QAngle *angles, const Vector *velocity)
 {
 	VPROF_BUDGET(__func__, "HNS");
+	this->jumpstats->OnTeleport();
 	this->movement->OnTeleport(origin, angles, velocity);
 }
 

@@ -22,6 +22,7 @@
 #include "hns/hns_commands.h"
 #include "hns/hns_weapons.h"
 #include "hns/hns_joinsound.h"
+#include "jumpstats/js_jumpstats.h"
 #include "sdk/takedamageinfo.h"
 #include "sdk/usercmd.h"
 
@@ -167,6 +168,7 @@ static KHook::Virtual<IGameSystem, void, const EventServerGamePostSimulate_t *> 
 static KHook::Return<void> BuildGameSessionManifestPost(IGameSystem *pThis, const EventBuildGameSessionManifest_t *msg)
 {
 	hns::joinsound::OnBuildGameSessionManifest(msg->m_pResourceManifest);
+	hns::jumpstats::OnBuildGameSessionManifest(msg->m_pResourceManifest);
 	return {KHook::Action::Ignore};
 }
 

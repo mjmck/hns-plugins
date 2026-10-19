@@ -7,6 +7,7 @@
 #include "hns_compat.h"
 #include "hns_hud.h"
 #include "hns_joinsound.h"
+#include "jumpstats/js_jumpstats.h"
 #include "utils/utils.h"
 
 #include "tier0/memdbgon.h"
@@ -48,6 +49,7 @@ CON_COMMAND_F(hns_status, "Print the enforced movement cvars and the plugin sett
 	hns::weapons::PrintDebug();
 	hns::compat::PrintStatus();
 	hns::joinsound::PrintStatus();
+	hns::jumpstats::PrintStatus();
 }
 
 CON_COMMAND_F(hns_write_fallback, "Write cfg/hns-movement/hns_movement_fallback.cfg with the enforced values.", FCVAR_NONE)
@@ -122,6 +124,8 @@ namespace hns::commands
 
 	static const ChatCommand chatCommands[] = {
 		{"hud", ToggleHud},
+		{"js", hns::jumpstats::ToggleReporting},
+		{"jssound", hns::jumpstats::ToggleSounds},
 	};
 
 	bool OnSay(const CCommandContext &context, const CCommand &args)

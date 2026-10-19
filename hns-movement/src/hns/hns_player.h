@@ -2,6 +2,7 @@
 #include "movement/movement.h"
 
 class HNSMovementService;
+class HNSJumpstatsService;
 
 // Replaces CS2KZ's KZPlayer. Keeps only what movement needs: no timer, HUD, jumpstats, anticheat, DB or chat services.
 // Every movement callback is forwarded to a single HNSMovementService (the ported Classic mode).
@@ -19,6 +20,7 @@ public:
 	virtual void Reset() override;
 
 	HNSMovementService *movement {};
+	HNSJumpstatsService *jumpstats {};
 
 	// Connected and in the server, judged from the controller entity. Used instead of Player::IsInGame, which reads the
 	// engine's client list through a gamedata offset (ClientOffset) that is not reliable on every game build.
@@ -53,6 +55,8 @@ public:
 	virtual void OnCategorizePositionPost(bool bStayOnGround) override;
 	virtual void OnAirMove() override;
 	virtual void OnAirMovePost() override;
+	virtual void OnAirAccelerate(Vector &wishdir, f32 &wishspeed, f32 &accel) override;
+	virtual void OnAirAcceleratePost(Vector wishdir, f32 wishspeed, f32 accel) override;
 	virtual void OnWaterMove() override;
 	virtual void OnWaterMovePost() override;
 	virtual void OnTryPlayerMove(Vector *pFirstDest, trace_t *pFirstTrace, bool *bIsSurfing) override;

@@ -101,6 +101,16 @@ name) plus the player being in the server, once per connection, with `hns_join_s
 changes do not replay it. Custom audio ships in a Workshop addon mounted by MultiAddonManager; see `addon/README.md`.
 `hns_join_sound_test <SteamID | sound event>` plays one from the server console.
 
+## Jumpstats
+
+CS2KZ's jumpstats, ported into `src/jumpstats/` and driven by the same movement hooks: LJ, BH, MBH, WJ, LAJ, LAH and JB
+with distance (distbug fix), strafes, sync, pre/max, height, edge, block, W release and CS2KZ's validity checks. The
+jumper and their spectators get the chat and console report, everyone else a one-line broadcast for big jumps
+(`hns_js_*` in hns-movement.cfg). Tier distances, the 500 unit cap and the tier sounds are in `cfg/jumpstats.cfg`;
+defaults are CS2KZ Classic, which this server's movement settings outgrow. Sounds are CS2KZ's `kz.*` events and need
+its workshop addon 3469155349 mounted with MultiAddonManager. Players toggle with `!js` and `!jssound`. Not ported:
+failstats, jsalways, the HUD panel, strafe graphs and option menus. Redie ghosts never report.
+
 ## After a CS2 update
 
 Signatures break. Run `scripts/sync-gamedata.sh` to copy CS2KZ's latest gamedata, rebuild, and check the server log.

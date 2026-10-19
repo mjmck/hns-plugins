@@ -7,6 +7,8 @@
 //   hns_perf_stats      per-player jump and perf counts
 // Player commands (own console, or chat with ! or /):
 //   hns_hud / !hud      turn your speed and key HUD on or off
+//   hns_js / !js        turn your jumpstats on or off
+//   hns_js_sound / !jssound  turn your jumpstat sounds on or off
 class CCommandContext;
 class CCommand;
 
