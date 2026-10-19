@@ -39,6 +39,7 @@ public:
 	} stats;
 
 	virtual void OnPlayerActive() override;
+	virtual void OnAuthorized() override;
 
 	// Movement hooks
 	virtual void OnPhysicsSimulate() override;

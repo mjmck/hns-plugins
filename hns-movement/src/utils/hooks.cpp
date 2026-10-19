@@ -21,6 +21,7 @@
 #include "hns/hns_hud.h"
 #include "hns/hns_commands.h"
 #include "hns/hns_weapons.h"
+#include "hns/hns_joinsound.h"
 #include "sdk/takedamageinfo.h"
 #include "sdk/usercmd.h"
 
@@ -161,6 +162,16 @@ static KHook::Return<void> ServerGamePostSimulatePost(IGameSystem *pThis, const 
 }
 
 static KHook::Virtual<IGameSystem, void, const EventServerGamePostSimulate_t *> serverGamePostSimulateHook(nullptr, ServerGamePostSimulatePost);
+
+// Same hook CS2KZ uses to precache its workshop addon's soundevents (hooks.cpp BuildGameSessionManifestPost).
+static KHook::Return<void> BuildGameSessionManifestPost(IGameSystem *pThis, const EventBuildGameSessionManifest_t *msg)
+{
+	hns::joinsound::OnBuildGameSessionManifest(msg->m_pResourceManifest);
+	return {KHook::Action::Ignore};
+}
+
+static KHook::Virtual<IGameSystem, void, const EventBuildGameSessionManifest_t *> buildGameSessionManifestHook(nullptr,
+																											  BuildGameSessionManifestPost);
 
 // ============================================================
 // Movement hooks (signature based)
@@ -851,6 +862,8 @@ bool hooks::Initialize(char *error, size_t maxlen)
 		void *vtable = modules::server->FindVirtualTable("CEntityDebugGameSystem");
 		serverGamePostSimulateHook.Configure(VtableIndex(&IGameSystem::OnServerGamePostSimulate));
 		serverGamePostSimulateHook.AddGlobal((IGameSystem *)&vtable);
+		buildGameSessionManifestHook.Configure(VtableIndex(&IGameSystem::OnBuildGameSessionManifest));
+		buildGameSessionManifestHook.AddGlobal((IGameSystem *)&vtable);
 	}
 
 	// Signature-based hooks
@@ -888,6 +901,7 @@ void hooks::Cleanup()
 	fireEventHook.ClearHooks();
 	dispatchConCommandHook.ClearHooks();
 	serverGamePostSimulateHook.ClearHooks();
+	buildGameSessionManifestHook.ClearHooks();
 
 	hns::movement::CleanupTraceHook();
 

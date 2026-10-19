@@ -1,5 +1,6 @@
 #include "hns_config.h"
 #include "hns_cvars.h"
+#include "hns_joinsound.h"
 #include "utils/utils.h"
 
 #include <cctype>
@@ -45,6 +46,9 @@ namespace hns::config
 			{"hns_t_spawn_grenades",    SettingDef::Bool,  &settings.tSpawnGrenades,       "1 = Ts get a smoke grenade and a flashbang when they spawn."},
 			{"hns_knife_cooldown",      SettingDef::Float, &settings.knifeCooldown,        "Seconds a stabbed T takes no further knife damage (tinted red meanwhile). 0 = no cooldown."},
 			{"hns_knife_damage",        SettingDef::Float, &settings.knifeDamage,          "Damage of every CT knife hit on a T, backstabs included. 0 = game default."},
+			{"hns_join_sound",          SettingDef::Bool,  &settings.joinSound,            "1 = play a server-wide sound when a player listed in join-sounds.cfg joins."},
+			{"hns_join_sound_delay",    SettingDef::Float, &settings.joinSoundDelay,       "Seconds after the listed player is in the server and Steam-validated before their join sound plays."},
+			{"hns_join_sound_cooldown", SettingDef::Float, &settings.joinSoundCooldown,    "Seconds before the same player's join sound can play again (stops replays on map change). 0 = every connection."},
 			{"hns_team_switch",         SettingDef::Bool,  &settings.teamSwitch,           "1 = swap teams when the CTs win. Keep 0 when ChaseMod handles the team switch."},
 			{"hns_t_winstreak_switch",  SettingDef::Int,   &settings.tWinStreakSwitch,     "Also swap teams after this many T wins in a row. 0 = never."},
 			{"hns_rampbug_threshold",   SettingDef::Float, &settings.rampbugThreshold,     "Rampbug fix: dot product below which two normals are different planes (CS2KZ: 0.999)."},
@@ -85,8 +89,7 @@ namespace hns::config
 		return false;
 	}
 
-	// Splits a cfg line into tokens: whitespace separated, double quotes group, // starts a comment.
-	static_function std::vector<std::string> Tokenize(const std::string &line)
+	std::vector<std::string> Tokenize(const std::string &line)
 	{
 		std::vector<std::string> tokens;
 		size_t i = 0;
@@ -141,6 +144,7 @@ namespace hns::config
 		if (!utils::ReadBufferFromFile(HNS_CONFIG_PATH, buffer))
 		{
 			HNS_LOG_WARN(LogChannel::General, "Could not read %s, using built-in defaults.\n", HNS_CONFIG_PATH);
+			hns::joinsound::Load();
 			return false;
 		}
 		std::string text(buffer.begin(), buffer.end());
@@ -179,6 +183,7 @@ namespace hns::config
 						 lineNumber, name);
 		}
 		HNS_LOG_INFO(LogChannel::General, "Loaded %u values from %s.\n", applied, HNS_CONFIG_PATH);
+		hns::joinsound::Load();
 		return true;
 	}
 

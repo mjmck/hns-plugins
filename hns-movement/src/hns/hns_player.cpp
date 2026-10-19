@@ -3,6 +3,7 @@
 #include "hns_cvars.h"
 #include "hns_config.h"
 #include "hns_hud.h"
+#include "hns_joinsound.h"
 #include "hns_gameplay.h"
 #include "hns_weapons.h"
 #include "utils/utils.h"
@@ -42,6 +43,7 @@ void HNSPlayer::Reset()
 	this->movement->Reset();
 	this->stats = {};
 	hns::hud::OnPlayerReset(this);
+	hns::joinsound::OnPlayerReset(this);
 }
 
 void HNSPlayer::OnPlayerActive()
@@ -52,6 +54,13 @@ void HNSPlayer::OnPlayerActive()
 	{
 		hns::cvars::SendToClient(this->GetPlayerSlot());
 	}
+	hns::joinsound::OnPlayerActive(this);
+}
+
+void HNSPlayer::OnAuthorized()
+{
+	Player::OnAuthorized();
+	hns::joinsound::OnPlayerAuthorized(this);
 }
 
 // ============================================================

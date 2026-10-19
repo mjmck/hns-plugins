@@ -6,6 +6,7 @@
 #include "hns_gameplay.h"
 #include "hns_compat.h"
 #include "hns_hud.h"
+#include "hns_joinsound.h"
 #include "utils/utils.h"
 
 #include "tier0/memdbgon.h"
@@ -20,7 +21,7 @@ static_function bool FromServer(const CCommandContext &context)
 	return true;
 }
 
-CON_COMMAND_F(hns_reload, "Reload cfg/hns-movement/hns-movement.cfg and push the movement cvars to every client.", FCVAR_NONE)
+CON_COMMAND_F(hns_reload, "Reload cfg/hns-movement/hns-movement.cfg (and join-sounds.cfg) and push the movement cvars to every client.", FCVAR_NONE)
 {
 	if (!FromServer(context))
 	{
@@ -46,6 +47,7 @@ CON_COMMAND_F(hns_status, "Print the enforced movement cvars and the plugin sett
 	hns::config::PrintSettings();
 	hns::weapons::PrintDebug();
 	hns::compat::PrintStatus();
+	hns::joinsound::PrintStatus();
 }
 
 CON_COMMAND_F(hns_write_fallback, "Write cfg/hns-movement/hns_movement_fallback.cfg with the enforced values.", FCVAR_NONE)

@@ -93,6 +93,14 @@ docker run -v ./build:/app/build -v ./.git:/app/.git hns-movement-builder
 Pin the submodules to the commits CS2KZ uses (`hl2sdk-cs2` `aeaa10b`, `metamod-source` `9c49d4c` at fork time).
 Windows: see `.github/workflows/build.yml`. The output is `build/package/`.
 
+## Join sounds
+
+When a player listed in `cfg/hns-movement/join-sounds.cfg` joins, everyone hears their sound. It is played with the same
+EmitSound call CS2KZ uses for jumpstat sounds, once per listener. The trigger is a Steam-validated SteamID64 (not the
+name) plus the player being in the server, once per connection, with `hns_join_sound_cooldown` (default 30 min) so map
+changes do not replay it. Custom audio ships in a Workshop addon mounted by MultiAddonManager; see `addon/README.md`.
+`hns_join_sound_test <SteamID | sound event>` plays one from the server console.
+
 ## After a CS2 update
 
 Signatures break. Run `scripts/sync-gamedata.sh` to copy CS2KZ's latest gamedata, rebuild, and check the server log.

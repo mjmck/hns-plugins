@@ -1,6 +1,9 @@
 #pragma once
 #include "common.h"
 
+#include <string>
+#include <vector>
+
 // Loads csgo/cfg/hns-movement/hns-movement.cfg.
 //
 // The file holds two kinds of lines, both "<name> <value>", with // comments:
@@ -58,6 +61,13 @@ namespace hns::config
 		f32 knifeCooldown = 2.0f;
 		// Centre-screen speed and key HUD (hns_hud.h): speed, last takeoff speed and held keys.
 		bool speedHud = true;
+		// ---- Join sounds (hns_joinsound.h, list in cfg/hns-movement/join-sounds.cfg) ----
+		bool joinSound = true;
+		// Seconds between the listed player being in the server (and Steam-validated) and the sound playing.
+		f32 joinSoundDelay = 1.0f;
+		// Seconds before the same player's join sound can play again. Map changes reconnect everyone, so this stops the
+		// sound replaying on every map. 0 = every connection.
+		f32 joinSoundCooldown = 1800.0f;
 		// Swap CTs and Ts when the CTs win.
 		bool teamSwitch = false; // ChaseMod owns the team switch (see hns_compat.h)
 		// Also swap after this many T wins in a row. 0 = never.
@@ -88,4 +98,7 @@ namespace hns::config
 	bool WriteDefaultConfigIfMissing();
 
 	void PrintSettings();
+
+	// Splits a cfg line into tokens: whitespace separated, double quotes group, // starts a comment.
+	std::vector<std::string> Tokenize(const std::string &line);
 } // namespace hns::config
