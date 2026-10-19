@@ -1,6 +1,6 @@
 // Jump reporting, tiers and settings. Reporting rules follow CS2KZ src/kz/jumpstats/jump_reporting.cpp (AGPL-3.0):
-// the jumper and their spectators get the full report, everyone else a one-line broadcast for big jumps, and tier
-// sounds play the same way (utils::PlaySoundToClient). Player preferences are replaced by server settings in
+// the full report and tier sound use the same code (utils::PlaySoundToClient), but on this server they only ever go to
+// the jumper: no broadcast to other players and no report for spectators. Player preferences are replaced by server settings in
 // hns-movement.cfg plus the per-player !js / !jssound switches; tiers and sounds come from jumpstats.cfg.
 #include "js_jumpstats.h"
 #include "hns/hns_player.h"
@@ -233,28 +233,6 @@ namespace hns::jumpstats
 		return (DistanceTier)Clamp(value, 0, DISTANCETIER_COUNT - 1);
 	}
 
-	// The player whose movement this player is looking at: themselves, or who they spectate in first/third person.
-	static_function HNSPlayer *GetViewedPlayer(HNSPlayer *player)
-	{
-		CCSPlayerController *controller = player->GetController();
-		if (!controller)
-		{
-			return nullptr;
-		}
-		CCSPlayerPawnBase *observer = controller->GetObserverPawn();
-		if (observer && observer->m_pObserverServices())
-		{
-			CPlayer_ObserverServices *obs = observer->m_pObserverServices();
-			ObserverMode_t mode = obs->m_iObserverMode();
-			CBaseEntity *target = obs->m_hObserverTarget().Get();
-			if ((mode == OBS_MODE_IN_EYE || mode == OBS_MODE_CHASE) && target && target->IsPawn())
-			{
-				return g_pHNSPlayerManager->ToPlayer(static_cast<CBasePlayerPawn *>(target));
-			}
-		}
-		return player;
-	}
-
 	static_function f32 FloorTo(f32 value, i32 decimals)
 	{
 		f32 scale = powf(10.0f, (f32)decimals);
@@ -337,13 +315,13 @@ namespace hns::jumpstats
 		utils::CPrintChat(target->GetController(), "%s", line.c_str());
 	}
 
-	static_function void PrintJumpToConsole(HNSPlayer *target, Jump *jump, DistanceTier tier, bool broadcast)
+	static_function void PrintJumpToConsole(HNSPlayer *target, Jump *jump, DistanceTier tier)
 	{
 		if (!hns::config::settings.jsConsole)
 		{
 			return;
 		}
-		DistanceTier minTier = ClampTierSetting(broadcast ? hns::config::settings.jsBroadcastMinTier : hns::config::settings.jsMinTier);
+		DistanceTier minTier = ClampTierSetting(hns::config::settings.jsMinTier);
 		if (minTier == DistanceTier_None || tier < minTier)
 		{
 			return;
@@ -373,10 +351,6 @@ namespace hns::jumpstats
 							"%.1f W release (ticks)",
 							jump->gainEff * 100.0f, jump->GetAirPath(), jump->GetDeviation(), jump->width, jump->airtime, jump->GetOffset(),
 							jump->duckEndDuration, jump->duckDuration, jump->GetReleaseInTick());
-		if (broadcast)
-		{
-			return;
-		}
 		// Per strafe, like CS2KZ's console table (angle ratio column left out).
 		utils::PrintConsole(controller, "  #.   Sync     Gain     Loss      Max  AirTime   BA   OL   DA  Width");
 		for (size_t i = 0; i < jump->strafes.size(); i++)
@@ -388,25 +362,13 @@ namespace hns::jumpstats
 		}
 	}
 
-	static_function void BroadcastJumpToChat(HNSPlayer *target, Jump *jump, DistanceTier tier)
-	{
-		DistanceTier minTier = ClampTierSetting(hns::config::settings.jsBroadcastMinTier);
-		if (minTier == DistanceTier_None || tier < minTier)
-		{
-			return;
-		}
-		utils::CPrintChat(target->GetController(), "%s {default}%s {grey}jumped %s%.2f {grey}units with a {lime}%s", JS_CHAT_PREFIX,
-						  jump->player->GetName(), distanceTierColors[tier], jump->GetDistance(), jumpTypeStr[jump->jumpType]);
-	}
-
-	static_function void PlayJumpstatSound(HNSPlayer *target, DistanceTier tier, bool broadcast)
+	static_function void PlayJumpstatSound(HNSPlayer *target, DistanceTier tier)
 	{
 		if (!target->jumpstats->sounds)
 		{
 			return;
 		}
-		DistanceTier minTier =
-			ClampTierSetting(broadcast ? hns::config::settings.jsBroadcastSoundMinTier : hns::config::settings.jsSoundMinTier);
+		DistanceTier minTier = ClampTierSetting(hns::config::settings.jsSoundMinTier);
 		if (minTier == DistanceTier_None || tier < minTier || tier <= DistanceTier_Meh || tables.sounds[tier].empty())
 		{
 			return;
@@ -430,26 +392,14 @@ namespace hns::jumpstats
 		{
 			return;
 		}
-		for (i32 i = 0; i < MAXPLAYERS; i++)
+		// Jumpstats are private: only the jumper gets the report and the sound. Nobody else (other players, spectators) sees
+		// or hears anything about this jump.
+		HNSPlayer *jumper = jump->player;
+		if (jumper && jumper->IsConnectedController() && !jumper->IsFakeClient() && jumper->jumpstats->reporting)
 		{
-			HNSPlayer *viewer = g_pHNSPlayerManager->ToPlayer(CPlayerSlot(i));
-			if (!viewer || !viewer->IsConnectedController() || viewer->IsFakeClient() || !viewer->jumpstats->reporting)
-			{
-				continue;
-			}
-			// The jumper and anyone spectating them get the full report.
-			if (viewer == jump->player || GetViewedPlayer(viewer) == jump->player)
-			{
-				PrintJumpToChat(viewer, jump, tier);
-				PrintJumpToConsole(viewer, jump, tier, false);
-				PlayJumpstatSound(viewer, tier, false);
-			}
-			else
-			{
-				BroadcastJumpToChat(viewer, jump, tier);
-				PrintJumpToConsole(viewer, jump, tier, true);
-				PlayJumpstatSound(viewer, tier, true);
-			}
+			PrintJumpToChat(jumper, jump, tier);
+			PrintJumpToConsole(jumper, jump, tier);
+			PlayJumpstatSound(jumper, tier);
 		}
 		// After the report, so a personal best / server record line comes right below it.
 		hns::jumpstats::db::OnJump(jump, tier);
