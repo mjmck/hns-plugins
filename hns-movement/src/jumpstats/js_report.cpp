@@ -366,7 +366,7 @@ namespace hns::jumpstats
 		// Jumpstats are private: only the jumper gets the report and the sound. Nobody else (other players, spectators) sees
 		// or hears anything about this jump.
 		HNSPlayer *jumper = jump->player;
-		if (jumper && jumper->IsConnectedController() && !jumper->IsFakeClient() && jumper->jumpstats->reporting)
+		if (jumper && jumper->processingMovement && jumper->IsConnectedController() && !jumper->IsFakeClient() && jumper->jumpstats->reporting)
 		{
 			PrintJumpToChat(jumper, jump, tier);
 			PrintJumpToConsole(jumper, jump, tier);

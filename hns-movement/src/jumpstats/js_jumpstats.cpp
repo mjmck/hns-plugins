@@ -368,7 +368,12 @@ void Jump::End()
 	this->gainEff = maxGain != 0.0f ? gain / maxGain : 0.0f;
 	this->ended = true;
 
-	this->EndBlockDistance();
+	// Block/edge traces only for a real landing inside movement processing. A jump ended by a teleport, a team or
+	// spectator change or a movetype change outside movement may have a pawn that is being removed.
+	if (this->valid && this->player->processingMovement && this->player->GetPlayerPawn())
+	{
+		this->EndBlockDistance();
+	}
 
 	// If there's no air time at all then that was definitely not a jump.
 	// Happens when player touches the ground from a ladder.
@@ -621,6 +626,15 @@ void HNSJumpstatsService::OnChangeMoveType(MoveType_t oldMoveType)
 		this->InvalidateJumpstats("Invalid movetype change");
 		this->EndJump();
 	}
+	else if (pawn->m_MoveType() != MOVETYPE_WALK && pawn->m_MoveType() != MOVETYPE_LADDER)
+	{
+		// Died, went spectator, frozen, noclip...: close the current jump without computing anything.
+		if (!this->jumps.empty() && !this->jumps.back().ended)
+		{
+			this->jumps.back().Invalidate("Invalid movetype");
+			this->jumps.back().ended = true;
+		}
+	}
 }
 
 bool HNSJumpstatsService::HitBhop()
@@ -743,6 +757,15 @@ void HNSJumpstatsService::HandleTeleport()
 		return;
 	}
 
+	// Outside movement processing (spectator / team change, respawn, plugins, disconnect) nothing is computed or
+	// reported: the jump is simply closed as invalid.
+	if (!this->player->processingMovement || !this->player->currentMoveData || !this->player->GetPlayerPawn())
+	{
+		jump->Invalidate("Teleported");
+		jump->ended = true;
+		return;
+	}
+
 	Vector preTeleportOrigin;
 	this->player->GetOrigin(&preTeleportOrigin);
 
@@ -752,7 +775,7 @@ void HNSJumpstatsService::HandleTeleport()
 	this->player->landingTime = this->player->GetCurtime();
 	this->player->landingTimeServer = g_pKZUtils->GetServerGlobals()->curtime;
 	this->player->landingTimeActual = this->player->landingTime;
-	if (this->player->processingMovement && this->player->currentMoveData)
+	if (this->player->currentMoveData)
 	{
 		this->player->landingVelocity = this->player->currentMoveData->m_vecVelocity;
 	}
