@@ -113,7 +113,7 @@ failstats, jsalways, the HUD panel, strafe graphs and option menus. Redie ghosts
 
 Records: with the [sql_mm](https://github.com/zer0k-z/sql_mm) Metamod plugin installed (as CS2KZ's local database
 uses), personal bests and server records are kept in `addons/hns-movement/data/jumpstats.sqlite3` (one row per player,
-jump type and block / non-block). New bests are shown to the jumper, new server records to everyone
+jump type and block / non-block). New bests are shown to the jumper; a new best that lands in the server top 10 is announced to everyone as "<name> is now #n in the <jump type> JumpTop! (<distance>)"
 (`hns_js_db`, `hns_js_db_announce`). Chat: `!pb [type]`, `!top [type] [block]`, `!sr`. Console:
 `hns_js_db_delete <SteamID64> [type]`, `hns_js_db_reset confirm`. Without sql_mm everything else works and records are off.
 

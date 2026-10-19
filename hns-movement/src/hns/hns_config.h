@@ -84,7 +84,7 @@ namespace hns::config
 		bool jsConsole = true;
 		// Personal bests and server records in addons/hns-movement/data/jumpstats.sqlite3 (needs the sql_mm plugin).
 		bool jsDb = true;
-		// Announce new server records to everyone.
+		// Announce to everyone when a new personal best lands in the server top 10 (JumpTop).
 		bool jsDbAnnounceRecords = true;
 		// Swap CTs and Ts when the CTs win.
 		bool teamSwitch = false; // ChaseMod owns the team switch (see hns_compat.h)

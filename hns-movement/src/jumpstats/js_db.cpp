@@ -362,6 +362,50 @@ namespace hns::jumpstats::db
 		return out;
 	}
 
+	// After a new personal best: if it places the player in the server's top 10 for that jump type, tell everyone.
+	// The rank query runs after the save on sql_mm's single database thread, so it already sees the new row.
+	static_function void AnnounceTopPlacement(const Record &r, i32 type, i32 isBlock)
+	{
+		std::string name = r.name;
+		f32 distance = r.distance;
+		i32 block = r.block;
+		auto callback = [name, distance, block, type, isBlock](ISQLQuery *query)
+		{
+			ISQLResult *result = query ? query->GetResultSet() : nullptr;
+			if (!result || !result->FetchRow())
+			{
+				return;
+			}
+			i32 rank = result->GetInt(0) + 1;
+			if (rank > JS_TOP_COUNT)
+			{
+				return;
+			}
+			char length[64];
+			if (isBlock)
+			{
+				V_snprintf(length, sizeof(length), "%d block, %.1f", block, distance);
+			}
+			else
+			{
+				V_snprintf(length, sizeof(length), "%.1f", distance);
+			}
+			utils::CPrintChatAll("%s {default}%s {grey}is now {gold}#%d {grey}in the {lime}%s%s {grey}JumpTop! ({gold}%s{grey})", JS_DB_PREFIX,
+								 name.c_str(), rank, jumpTypeStr[type], isBlock ? " Block" : "", length);
+		};
+		if (isBlock)
+		{
+			connection->Query("SELECT COUNT(*) FROM Jumpstats WHERE JumpType = %d AND IsBlockJump = 1 AND "
+							  "(Block > %d OR (Block = %d AND Distance > %.4f))",
+							  callback, type, block, block, distance);
+		}
+		else
+		{
+			connection->Query("SELECT COUNT(*) FROM Jumpstats WHERE JumpType = %d AND IsBlockJump = 0 AND Distance > %.4f", callback, type,
+							  distance);
+		}
+	}
+
 	static_function void TryRecord(HNSPlayer *player, PlayerCache &cache, Record candidate, i32 type, i32 isBlock)
 	{
 		Record &pb = cache.pb[type][isBlock];
@@ -388,33 +432,15 @@ namespace hns::jumpstats::db
 			}
 		}
 
+		// Keep the cached server record (for !sr) current.
 		Record &sr = serverRecords[type][isBlock];
-		if (!Beats(candidate, sr, isBlock))
+		if (Beats(candidate, sr, isBlock))
 		{
-			return;
+			sr = candidate;
 		}
-		Record previousSR = sr;
-		sr = candidate;
-		if (!hns::config::settings.jsDbAnnounceRecords)
+		if (hns::config::settings.jsDbAnnounceRecords)
 		{
-			return;
-		}
-		if (previousSR.set && previousSR.steamID != candidate.steamID)
-		{
-			utils::CPrintChatAll("%s {gold}New server record{grey}: {default}%s {grey}%s {gold}%s{grey} (previous %s by %s)", JS_DB_PREFIX,
-								 candidate.name.c_str(), jumpTypeStr[type], Describe(candidate, isBlock).c_str(),
-								 Describe(previousSR, isBlock).c_str(), previousSR.name.c_str());
-		}
-		else if (previousSR.set)
-		{
-			utils::CPrintChatAll("%s {gold}New server record{grey}: {default}%s {grey}%s {gold}%s{grey} (beat their own %s)", JS_DB_PREFIX,
-								 candidate.name.c_str(), jumpTypeStr[type], Describe(candidate, isBlock).c_str(),
-								 Describe(previousSR, isBlock).c_str());
-		}
-		else
-		{
-			utils::CPrintChatAll("%s {gold}New server record{grey}: {default}%s {grey}%s {gold}%s", JS_DB_PREFIX, candidate.name.c_str(),
-								 jumpTypeStr[type], Describe(candidate, isBlock).c_str());
+			AnnounceTopPlacement(candidate, type, isBlock);
 		}
 	}
 
