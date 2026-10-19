@@ -255,7 +255,7 @@ namespace hns::joinsound
 			return;
 		}
 		lastPlayed[steamID] = now;
-		StartTimer<i32, u64>(PlayJoinSoundTimer, slot, steamID, std::max(hns::config::settings.joinSoundDelay, 0.0f), false, true);
+		StartTimer<i32, u64>(PlayJoinSoundTimer, slot, steamID, (std::max)(hns::config::settings.joinSoundDelay, 0.0f), false, true);
 	}
 
 	void OnPlayerActive(HNSPlayer *player)
