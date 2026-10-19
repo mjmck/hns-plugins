@@ -250,7 +250,7 @@ namespace hns::jumpstats
 		char out[32];
 		if (release > 10)
 		{
-			return "{red}✗";
+			return "{red}\xE2\x9C\x97";
 		}
 		if (release > 0)
 		{
@@ -259,7 +259,7 @@ namespace hns::jumpstats
 		}
 		if (release == 0)
 		{
-			return "{green}✓";
+			return "{green}\xE2\x9C\x93";
 		}
 		V_snprintf(out, sizeof(out), "{blue}%.1f", release);
 		return out;
