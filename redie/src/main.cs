@@ -19,6 +19,12 @@ public class Plugin : BasePlugin, IPluginConfig<Config>
     // Set from round_end until the next round_start. New ghosts are not allowed then.
     bool roundOver;
 
+    // How a player's pawn looked before they became a ghost, by player slot. CS2 reuses the same pawn when the player
+    // respawns, so the ghost's transparency, missing shadow and no-block collision would otherwise carry over into the
+    // next life. Restored on their next spawn.
+    record struct PawnLook(Color Render, float Shadow, byte CollisionAttributeGroup, byte CollisionGroup);
+    readonly Dictionary<int, PawnLook> savedLooks = new();
+
     public override void Load(bool hotReload)
     {
         foreach (var cmd in Config.Commands)
@@ -28,6 +34,8 @@ public class Plugin : BasePlugin, IPluginConfig<Config>
         RegisterEventHandler<EventRoundEnd>(EventRoundEnd);
         RegisterEventHandler<EventPlayerTeam>(EventPlayerTeam);
         RegisterEventHandler<EventPlayerDeath>(EventPlayerDeath, HookMode.Pre);
+        RegisterEventHandler<EventPlayerSpawn>(EventPlayerSpawn);
+        RegisterEventHandler<EventPlayerDisconnect>(EventPlayerDisconnect);
 
         RegisterListener<Listeners.CheckTransmit>(CheckTransmit);
 
@@ -48,6 +56,8 @@ public class Plugin : BasePlugin, IPluginConfig<Config>
         DeregisterEventHandler<EventRoundEnd>(EventRoundEnd);
         DeregisterEventHandler<EventPlayerTeam>(EventPlayerTeam);
         DeregisterEventHandler<EventPlayerDeath>(EventPlayerDeath, HookMode.Pre);
+        DeregisterEventHandler<EventPlayerSpawn>(EventPlayerSpawn);
+        DeregisterEventHandler<EventPlayerDisconnect>(EventPlayerDisconnect);
 
         RemoveListener<Listeners.CheckTransmit>(CheckTransmit);
 
@@ -98,6 +108,14 @@ public class Plugin : BasePlugin, IPluginConfig<Config>
 
         Server.NextFrame(() =>
         {
+            if (!playerPawn.IsValid) return;
+
+            if (!savedLooks.ContainsKey(player.Slot))
+            {
+                savedLooks[player.Slot] = new PawnLook(playerPawn.Render, playerPawn.ShadowStrength,
+                    playerPawn.Collision.CollisionAttribute.CollisionGroup, playerPawn.Collision.CollisionGroup);
+            }
+
             playerPawn.Collision.CollisionAttribute.CollisionGroup = (byte)CollisionGroup.COLLISION_GROUP_DISSOLVING; //noblock
             playerPawn.Collision.CollisionGroup = (byte)CollisionGroup.COLLISION_GROUP_DISSOLVING; //noblock
             playerPawn.ShadowStrength = 0f;
@@ -150,6 +168,49 @@ public class Plugin : BasePlugin, IPluginConfig<Config>
 
         if (RediePlayers.Contains(player))
             RediePlayers.Remove(player);
+
+        return HookResult.Continue;
+    }
+
+    HookResult EventPlayerDisconnect(EventPlayerDisconnect @event, GameEventInfo info)
+    {
+        var player = @event.Userid;
+        if (player != null)
+            savedLooks.Remove(player.Slot);
+
+        return HookResult.Continue;
+    }
+
+    HookResult EventPlayerSpawn(EventPlayerSpawn @event, GameEventInfo info)
+    {
+        var player = @event.Userid;
+
+        if (player == null || !player.IsValid || RediePlayers.Contains(player))
+            return HookResult.Continue;
+
+        if (!savedLooks.Remove(player.Slot, out var look))
+            return HookResult.Continue;
+
+        var pawn = player.PlayerPawn.Value;
+        if (pawn == null || !pawn.IsValid)
+            return HookResult.Continue;
+
+        // Only undo what the ghost changed, so tints set by other plugins (freeze, stab) are left alone.
+        if (pawn.Render.A == 0)
+        {
+            pawn.Render = look.Render.A == 0 ? Color.White : look.Render;
+            Utilities.SetStateChanged(pawn, "CBaseModelEntity", "m_clrRender");
+        }
+        if (pawn.ShadowStrength == 0f)
+        {
+            pawn.ShadowStrength = look.Shadow;
+            Utilities.SetStateChanged(pawn, "CBaseModelEntity", "m_flShadowStrength");
+        }
+        if (pawn.Collision.CollisionGroup == (byte)CollisionGroup.COLLISION_GROUP_DISSOLVING)
+        {
+            pawn.Collision.CollisionAttribute.CollisionGroup = look.CollisionAttributeGroup;
+            pawn.Collision.CollisionGroup = look.CollisionGroup;
+        }
 
         return HookResult.Continue;
     }
