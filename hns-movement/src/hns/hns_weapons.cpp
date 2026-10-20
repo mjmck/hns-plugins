@@ -502,7 +502,9 @@ namespace hns::weapons
 		// is on or above. No damage, no cooldown.
 		// Exception: a T standing on (or who last stood on) a CT's head can be stabbed by any CT.
 		bool victimOnCT = IsOnGround(victim) ? IsStandingOnCT(victim) : (slot >= 0 && slot <= MAXPLAYERS && hasGroundZ[slot] && lastGroundOnCT[slot]);
-		if (settings.understab && !victimOnCT)
+		// Ladders: no height check when either player is on a ladder.
+		bool onLadder = static_cast<CCSPlayerPawn *>(victim)->m_MoveType() == MOVETYPE_LADDER || attackerPawn->m_MoveType() == MOVETYPE_LADDER;
+		if (settings.understab && !victimOnCT && !onLadder)
 		{
 			i32 attackerSlot = GetSlot(attacker);
 			f32 victimZ = GetStandingZ(static_cast<CCSPlayerPawn *>(victim), slot);
