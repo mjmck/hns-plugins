@@ -26,6 +26,7 @@ namespace hns::weapons
 	static_global u32 damageOverrides {};
 	static_global u32 blockedStabs {};
 	static_global u32 understabs {};
+	static_global u32 blockedTeamDamage {};
 	// Understab: height (origin z) of the ground each player last stood on, refreshed every frame while they are on it.
 	static_global f32 lastGroundZ[MAXPLAYERS + 1] {};
 	static_global bool hasGroundZ[MAXPLAYERS + 1] {};
@@ -445,7 +446,21 @@ namespace hns::weapons
 
 	bool OnTakeDamage(CBaseEntity *victim, CTakeDamageInfo *info)
 	{
-		if ((settings.knifeDamage <= 0.0f && settings.knifeCooldown <= 0.0f && !settings.understab) || !victim || !info)
+		if (!victim || !info)
+		{
+			return false;
+		}
+		// No team damage: a player hurting a teammate (any weapon). Self damage and fall damage are untouched.
+		if (settings.noTeamDamage && KZ_STREQ(victim->GetClassname(), "player"))
+		{
+			CBaseEntity *damager = info->m_hAttacker().Get();
+			if (damager && damager != victim && KZ_STREQ(damager->GetClassname(), "player") && damager->m_iTeamNum() == victim->m_iTeamNum())
+			{
+				blockedTeamDamage++;
+				return true;
+			}
+		}
+		if (settings.knifeDamage <= 0.0f && settings.knifeCooldown <= 0.0f && !settings.understab)
 		{
 			return false;
 		}
@@ -583,7 +598,8 @@ namespace hns::weapons
 					   g_pKZUtils->RemoveEntity ? "ok" : "MISSING", damageHooked ? "ok" : "MISSING");
 		META_CONPRINTF("weapons removed so far %u, knife damage overrides so far %u, stabs blocked by cooldown %u, understabs denied %u\n", removedCount,
 					   damageOverrides, blockedStabs, understabs);
-		META_CONPRINTF("understab %d, understab_height %g\n", settings.understab, settings.understabHeight);
+		META_CONPRINTF("understab %d, understab_height %g, no_team_damage %d (team damage blocked %u)\n", settings.understab, settings.understabHeight,
+					   settings.noTeamDamage, blockedTeamDamage);
 		for (i32 i = 0; i < MAXPLAYERS; i++)
 		{
 			HNSPlayer *player = g_pHNSPlayerManager->ToPlayer(CPlayerSlot(i));

@@ -53,6 +53,7 @@ the TryPlayerMove path is still recorded so it can be added later).
 | `hns_debug_perf` | 0 | Print every takeoff (perf, ground time, speeds) to the console. |
 | `hns_understab` | 1 | Deny a CT stab when the T stands (or last stood before jumping) more than `hns_understab_height` units above the floor the CT is on or above. Both players see "UNDERSTAB! Stab Denied" (UNDERSTAB! in red). A T standing on (or who last stood on) a CT's head can always be stabbed. |
 | `hns_understab_height` | 65 | Understab height limit in units. |
+| `hns_no_team_damage` | 1 | Players never damage their teammates (knife, grenades, anything), whatever `mp_friendlyfire` is set to. |
 | `hns_solid_teammates` | 0 | Enforced into `mp_solid_teammates` (0 = pass through, 1 = solid, 2 = solid, no standing on heads). 0 matches CS2KZ; the rampbug fix assumes teammates don't collide. |
 
 Not owned by the plugin, on purpose: `mp_solid_enemies` (Ts and CTs still collide), `sv_falldamage_scale` (ChaseMod),
