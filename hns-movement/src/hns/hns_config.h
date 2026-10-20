@@ -56,6 +56,12 @@ namespace hns::config
 		f32 knifeDamage = 55.0f;
 		// Seconds a stabbed T takes no further knife damage (red tint meanwhile). 0 = no cooldown.
 		f32 knifeCooldown = 2.0f;
+		// Understab: a CT stab is denied when the T stands (or last stood) more than understabHeight units above the floor
+		// the CT is standing on or above. The CT is told "UNDERSTAB! Stab Denied" in chat.
+		bool understab = true;
+		// Players never damage their own teammates (knife, grenades, anything), whatever mp_friendlyfire is set to.
+		bool noTeamDamage = true;
+		f32 understabHeight = 65.0f;
 		// Centre-screen speed and key HUD (hns_hud.h): speed, last takeoff speed and held keys.
 		bool speedHud = true;
 		// Swap CTs and Ts when the CTs win.

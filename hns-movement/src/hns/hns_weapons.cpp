@@ -10,6 +10,8 @@
 #include "sdk/takedamageinfo.h"
 #include "sdk/usercmd.h"
 #include "sdk/entity/cbaseplayerweapon.h"
+#include "sdk/tracefilter.h"
+#include "sdk/navphysicsinterface.h"
 
 #include "tier0/memdbgon.h"
 
@@ -23,6 +25,13 @@ namespace hns::weapons
 	static_global u32 removedCount {};
 	static_global u32 damageOverrides {};
 	static_global u32 blockedStabs {};
+	static_global u32 understabs {};
+	static_global u32 blockedTeamDamage {};
+	// Understab: height (origin z) of the ground each player last stood on, refreshed every frame while they are on it.
+	static_global f32 lastGroundZ[MAXPLAYERS + 1] {};
+	static_global bool hasGroundZ[MAXPLAYERS + 1] {};
+	// The ground each player last stood on was a CT's head. A T standing on a CT can be stabbed by any CT.
+	static_global bool lastGroundOnCT[MAXPLAYERS + 1] {};
 	// Knife cooldown: a stabbed T takes no knife damage until this server time.
 	static_global f32 stabImmuneUntil[MAXPLAYERS + 1] {};
 	static_global bool stabTinted[MAXPLAYERS + 1] {};
@@ -257,6 +266,8 @@ namespace hns::weapons
 		{
 			// 4 ticks: the game hands out the default loadout right after the spawn event.
 			pendingSpawnItems[slot] = g_pKZUtils->GetServerGlobals()->tickcount + 4;
+			hasGroundZ[slot] = false;
+			lastGroundOnCT[slot] = false;
 		}
 	}
 
@@ -307,9 +318,100 @@ namespace hns::weapons
 		}
 	}
 
+	static_function bool IsOnGround(CBaseEntity *pawn)
+	{
+		return (pawn->m_fFlags() & FL_ONGROUND) != 0;
+	}
+
+	// True if the player is standing on a CT player (their ground entity is a CT's pawn).
+	static_function bool IsStandingOnCT(CBaseEntity *pawn)
+	{
+		CBaseEntity *ground = pawn->m_hGroundEntity().Get();
+		return ground && ground != pawn && KZ_STREQ(ground->GetClassname(), "player") && ground->m_iTeamNum() == CS_TEAM_CT;
+	}
+
+	// Remember where every player last stood, so a T who jumps keeps the height of the block they jumped from.
+	static_function void UpdateGroundHeights()
+	{
+		for (i32 i = 0; i < MAXPLAYERS; i++)
+		{
+			HNSPlayer *player = g_pHNSPlayerManager->ToPlayer(CPlayerSlot(i));
+			CCSPlayerPawn *pawn = player ? player->GetPlayerPawn() : nullptr;
+			if (!pawn || !player->IsConnectedController() || !player->IsAlive() || !IsOnGround(pawn))
+			{
+				continue;
+			}
+			lastGroundZ[i] = pawn->m_CBodyComponent()->m_pSceneNode()->m_vecAbsOrigin().z;
+			hasGroundZ[i] = true;
+			lastGroundOnCT[i] = IsStandingOnCT(pawn);
+		}
+	}
+
+	// Height of the floor straight below a player (a player-sized box traced down). Returns false if there is none.
+	static_function bool TraceFloorBelow(CCSPlayerPawn *pawn, const Vector &origin, f32 &floorZ)
+	{
+		CTraceFilterPlayerMovementCS filter(pawn);
+		bbox_t bounds;
+		bounds.mins = {-16.0f, -16.0f, 0.0f};
+		bounds.maxs = {16.0f, 16.0f, 54.0f};
+		Vector end = origin;
+		end.z -= 16384.0f;
+		trace_t trace;
+		INavPhysicsInterface::TraceShape(Ray_t(bounds.mins, bounds.maxs), origin, end, &filter, &trace);
+		if (trace.m_bStartInSolid || trace.m_flFraction >= 1.0f)
+		{
+			return false;
+		}
+		floorZ = trace.m_vEndPos.z;
+		return true;
+	}
+
+	// The ground a player stands on, or the last ground they stood on while in the air (the T side of the rule).
+	static_function f32 GetStandingZ(CCSPlayerPawn *pawn, i32 slot)
+	{
+		Vector origin = pawn->m_CBodyComponent()->m_pSceneNode()->m_vecAbsOrigin();
+		if (IsOnGround(pawn))
+		{
+			return origin.z;
+		}
+		if (slot >= 0 && slot <= MAXPLAYERS && hasGroundZ[slot])
+		{
+			return lastGroundZ[slot];
+		}
+		f32 floorZ;
+		return TraceFloorBelow(pawn, origin, floorZ) ? floorZ : origin.z;
+	}
+
+	// The floor a player is currently above (the CT side of the rule): their ground, or what is below them in the air.
+	static_function f32 GetFloorBelowZ(CCSPlayerPawn *pawn, i32 slot)
+	{
+		Vector origin = pawn->m_CBodyComponent()->m_pSceneNode()->m_vecAbsOrigin();
+		if (IsOnGround(pawn))
+		{
+			return origin.z;
+		}
+		f32 floorZ;
+		if (TraceFloorBelow(pawn, origin, floorZ))
+		{
+			return floorZ;
+		}
+		if (slot >= 0 && slot <= MAXPLAYERS && hasGroundZ[slot])
+		{
+			return lastGroundZ[slot];
+		}
+		return origin.z;
+	}
+
+	static_function i32 GetSlot(CBaseEntity *pawn)
+	{
+		CBasePlayerController *controller = utils::GetController(pawn);
+		return controller ? controller->m_pEntity->m_EHandle.GetEntryIndex() - 1 : -1;
+	}
+
 	void OnGameFrame()
 	{
 		UpdateStabTints();
+		UpdateGroundHeights();
 		{
 			i32 now = g_pKZUtils->GetServerGlobals()->tickcount;
 			for (i32 i = 0; i < MAXPLAYERS; i++)
@@ -344,7 +446,21 @@ namespace hns::weapons
 
 	bool OnTakeDamage(CBaseEntity *victim, CTakeDamageInfo *info)
 	{
-		if ((settings.knifeDamage <= 0.0f && settings.knifeCooldown <= 0.0f) || !victim || !info)
+		if (!victim || !info)
+		{
+			return false;
+		}
+		// No team damage: a player hurting a teammate (any weapon). Self damage and fall damage are untouched.
+		if (settings.noTeamDamage && KZ_STREQ(victim->GetClassname(), "player"))
+		{
+			CBaseEntity *damager = info->m_hAttacker().Get();
+			if (damager && damager != victim && KZ_STREQ(damager->GetClassname(), "player") && damager->m_iTeamNum() == victim->m_iTeamNum())
+			{
+				blockedTeamDamage++;
+				return true;
+			}
+		}
+		if (settings.knifeDamage <= 0.0f && settings.knifeCooldown <= 0.0f && !settings.understab)
 		{
 			return false;
 		}
@@ -381,6 +497,35 @@ namespace hns::weapons
 				blockedStabs++;
 				return true;
 			}
+		}
+		// Understab: the T is standing (or last stood) on something more than hns_understab_height above the floor the CT
+		// is on or above. No damage, no cooldown.
+		// Exception: a T standing on (or who last stood on) a CT's head can be stabbed by any CT.
+		bool victimOnCT = IsOnGround(victim) ? IsStandingOnCT(victim) : (slot >= 0 && slot <= MAXPLAYERS && hasGroundZ[slot] && lastGroundOnCT[slot]);
+		// Ladders: no height check when either player is on a ladder.
+		bool onLadder = static_cast<CCSPlayerPawn *>(victim)->m_MoveType() == MOVETYPE_LADDER || attackerPawn->m_MoveType() == MOVETYPE_LADDER;
+		if (settings.understab && !victimOnCT && !onLadder)
+		{
+			i32 attackerSlot = GetSlot(attacker);
+			f32 victimZ = GetStandingZ(static_cast<CCSPlayerPawn *>(victim), slot);
+			f32 attackerZ = GetFloorBelowZ(attackerPawn, attackerSlot);
+			if (victimZ - attackerZ > settings.understabHeight)
+			{
+				understabs++;
+				CBasePlayerController *attackerController = utils::GetController(attacker);
+				if (attackerController)
+				{
+					utils::CPrintChat(attackerController, " {red}UNDERSTAB!{default} Stab Denied");
+				}
+				if (victimController)
+				{
+					utils::CPrintChat(victimController, " {red}UNDERSTAB!{default} Stab Denied");
+				}
+				return true;
+			}
+		}
+		if (settings.knifeCooldown > 0.0f && slot >= 0 && slot <= MAXPLAYERS)
+		{
 			stabImmuneUntil[slot] = now + settings.knifeCooldown;
 		}
 		if (settings.knifeDamage > 0.0f)
@@ -453,7 +598,10 @@ namespace hns::weapons
 					   settings.knifeStabOnly, settings.knifeDamage);
 		META_CONPRINTF("RemovePlayerItem %s, RemoveEntity %s, damage hook %s\n", RemovePlayerItem ? "ok" : "MISSING",
 					   g_pKZUtils->RemoveEntity ? "ok" : "MISSING", damageHooked ? "ok" : "MISSING");
-		META_CONPRINTF("weapons removed so far %u, knife damage overrides so far %u, stabs blocked by cooldown %u\n", removedCount, damageOverrides, blockedStabs);
+		META_CONPRINTF("weapons removed so far %u, knife damage overrides so far %u, stabs blocked by cooldown %u, understabs denied %u\n", removedCount,
+					   damageOverrides, blockedStabs, understabs);
+		META_CONPRINTF("understab %d, understab_height %g, no_team_damage %d (team damage blocked %u)\n", settings.understab, settings.understabHeight,
+					   settings.noTeamDamage, blockedTeamDamage);
 		for (i32 i = 0; i < MAXPLAYERS; i++)
 		{
 			HNSPlayer *player = g_pHNSPlayerManager->ToPlayer(CPlayerSlot(i));
