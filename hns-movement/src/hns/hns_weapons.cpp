@@ -29,6 +29,8 @@ namespace hns::weapons
 	// Understab: height (origin z) of the ground each player last stood on, refreshed every frame while they are on it.
 	static_global f32 lastGroundZ[MAXPLAYERS + 1] {};
 	static_global bool hasGroundZ[MAXPLAYERS + 1] {};
+	// The ground each player last stood on was a CT's head. A T standing on a CT can be stabbed by any CT.
+	static_global bool lastGroundOnCT[MAXPLAYERS + 1] {};
 	// Knife cooldown: a stabbed T takes no knife damage until this server time.
 	static_global f32 stabImmuneUntil[MAXPLAYERS + 1] {};
 	static_global bool stabTinted[MAXPLAYERS + 1] {};
@@ -264,6 +266,7 @@ namespace hns::weapons
 			// 4 ticks: the game hands out the default loadout right after the spawn event.
 			pendingSpawnItems[slot] = g_pKZUtils->GetServerGlobals()->tickcount + 4;
 			hasGroundZ[slot] = false;
+			lastGroundOnCT[slot] = false;
 		}
 	}
 
@@ -319,6 +322,13 @@ namespace hns::weapons
 		return (pawn->m_fFlags() & FL_ONGROUND) != 0;
 	}
 
+	// True if the player is standing on a CT player (their ground entity is a CT's pawn).
+	static_function bool IsStandingOnCT(CBaseEntity *pawn)
+	{
+		CBaseEntity *ground = pawn->m_hGroundEntity().Get();
+		return ground && ground != pawn && KZ_STREQ(ground->GetClassname(), "player") && ground->m_iTeamNum() == CS_TEAM_CT;
+	}
+
 	// Remember where every player last stood, so a T who jumps keeps the height of the block they jumped from.
 	static_function void UpdateGroundHeights()
 	{
@@ -332,6 +342,7 @@ namespace hns::weapons
 			}
 			lastGroundZ[i] = pawn->m_CBodyComponent()->m_pSceneNode()->m_vecAbsOrigin().z;
 			hasGroundZ[i] = true;
+			lastGroundOnCT[i] = IsStandingOnCT(pawn);
 		}
 	}
 
@@ -474,7 +485,9 @@ namespace hns::weapons
 		}
 		// Understab: the T is standing (or last stood) on something more than hns_understab_height above the floor the CT
 		// is on or above. No damage, no cooldown.
-		if (settings.understab)
+		// Exception: a T standing on (or who last stood on) a CT's head can be stabbed by any CT.
+		bool victimOnCT = IsOnGround(victim) ? IsStandingOnCT(victim) : (slot >= 0 && slot <= MAXPLAYERS && hasGroundZ[slot] && lastGroundOnCT[slot]);
+		if (settings.understab && !victimOnCT)
 		{
 			i32 attackerSlot = GetSlot(attacker);
 			f32 victimZ = GetStandingZ(static_cast<CCSPlayerPawn *>(victim), slot);
