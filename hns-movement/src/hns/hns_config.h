@@ -71,7 +71,7 @@ namespace hns::config
 		// ---- Jumpstats (src/jumpstats, tiers and sounds in cfg/hns-movement/jumpstats.cfg) ----
 		bool jumpstats = true;
 		// Tiers: 0 none (off), 1 meh, 2 impressive, 3 perfect, 4 godlike, 5 ownage, 6 wrecker. Same defaults as CS2KZ.
-		// Lowest tier shown to the jumper in chat and console. Jumpstats only ever go to the jumper.
+		// Lowest tier shown to the jumper (and their spectators) in chat and console. Nobody else gets jumpstats.
 		i32 jsMinTier = 2;
 		// Lowest tier that plays a sound for the jumper.
 		i32 jsSoundMinTier = 2;
