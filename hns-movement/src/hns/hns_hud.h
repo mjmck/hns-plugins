@@ -8,7 +8,8 @@ class PlayerCommand;
 //   Speed: 312 u/s (289)        current horizontal speed, takeoff speed of the last jump in brackets
 //   W A S D C J                 keys held; unheld keys show as _
 // Jump lights up for any jump input, including a mouse wheel jump, which presses and releases jump inside a single
-// tick and so never shows up as "held". Spectators see the HUD of the player they are watching.
+// tick and so never shows up as "held". A live player always sees their own HUD; dead players and spectators see the
+// HUD of the player they are watching in first or third person (same rule as the CS2KZ legacy HUD).
 namespace hns::hud
 {
 	// Reads the player's inputs for this tick (called before the game processes them; nothing is changed).

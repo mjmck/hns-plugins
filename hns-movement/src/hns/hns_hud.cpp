@@ -23,6 +23,7 @@ namespace hns::hud
 		f32 takeoffSpeed {};
 		bool hasTakeoff {};
 		bool hidden {}; // turned off by the player with hns_hud
+		bool shown {};  // the HUD is currently on this player's screen
 	};
 
 	static State states[MAXPLAYERS + 1];
@@ -58,6 +59,7 @@ namespace hns::hud
 		{
 			// Clear what is on screen now instead of letting the last send run out.
 			utils::PrintHTMLCentre(player->GetController(), " ");
+			state->shown = false;
 		}
 		return !state->hidden;
 	}
@@ -125,7 +127,11 @@ namespace hns::hud
 		state->jumpShowUntil = MAX(state->jumpShowUntil, Tick() + JUMP_SHOW_TICKS);
 	}
 
-	// The player whose movement this player is looking at: themselves, or who they spectate in first/third person.
+	// The player whose speed and inputs this player should see, picked the way the CS2KZ legacy HUD does it
+	// (KZSpecService::GetSpectatedPlayer): a live player always sees themselves; a dead player or spectator sees the
+	// player they are watching in first or third person; anyone else sees nothing.
+	// The live check has to come first. The observer pawn keeps its last spectate target and mode after the player
+	// respawns, so reading it for a live player shows them whoever they were spectating before.
 	static_function HNSPlayer *GetViewedPlayer(HNSPlayer *player)
 	{
 		CCSPlayerController *controller = player->GetController();
@@ -133,22 +139,35 @@ namespace hns::hud
 		{
 			return nullptr;
 		}
-		CCSPlayerPawnBase *observer = controller->GetObserverPawn();
-		if (observer && observer->m_pObserverServices())
+		CCSPlayerPawn *ownPawn = controller->GetPlayerPawn();
+		if (ownPawn && ownPawn->IsAlive())
 		{
-			CPlayer_ObserverServices *obs = observer->m_pObserverServices();
-			ObserverMode_t mode = obs->m_iObserverMode();
-			CBaseEntity *target = obs->m_hObserverTarget().Get();
-			if ((mode == OBS_MODE_IN_EYE || mode == OBS_MODE_CHASE) && target && target->IsPawn())
-			{
-				HNSPlayer *viewed = g_pHNSPlayerManager->ToPlayer(static_cast<CBasePlayerPawn *>(target));
-				if (viewed)
-				{
-					return viewed;
-				}
-			}
+			return player;
 		}
-		return player->GetPlayerPawn() ? player : nullptr;
+		CCSPlayerPawnBase *observer = controller->GetObserverPawn();
+		if (!observer || !observer->m_pObserverServices())
+		{
+			return nullptr;
+		}
+		CPlayer_ObserverServices *obs = observer->m_pObserverServices();
+		ObserverMode_t mode = obs->m_iObserverMode();
+		if (mode != OBS_MODE_IN_EYE && mode != OBS_MODE_CHASE)
+		{
+			return nullptr;
+		}
+		CBaseEntity *target = obs->m_hObserverTarget().Get();
+		// Watching their own corpse counts as watching nobody.
+		if (!target || !target->IsPawn() || target == ownPawn)
+		{
+			return nullptr;
+		}
+		CBasePlayerPawn *targetPawn = static_cast<CBasePlayerPawn *>(target);
+		if (!targetPawn->IsAlive())
+		{
+			return nullptr;
+		}
+		HNSPlayer *viewed = g_pHNSPlayerManager->ToPlayer(targetPawn);
+		return (viewed && viewed != player) ? viewed : nullptr;
 	}
 
 	static_function const char *Key(u64 held, u64 button, const char *label)
@@ -167,6 +186,12 @@ namespace hns::hud
 		State *state = GetState(viewed);
 		if (!viewed || !state || !viewed->GetPlayerPawn())
 		{
+			// Each send stays up for a few seconds, so clear it once instead of leaving the last player's HUD there.
+			if (viewerState->shown)
+			{
+				utils::PrintHTMLCentre(viewer->GetController(), " ");
+				viewerState->shown = false;
+			}
 			return;
 		}
 		Vector velocity;
@@ -190,6 +215,7 @@ namespace hns::hud
 				   Key(held, IN_MOVELEFT, "A"), Key(held, IN_BACK, "S"), Key(held, IN_MOVERIGHT, "D"), Key(held, IN_DUCK, "C"),
 				   Key(held, IN_JUMP, "J"));
 		utils::PrintHTMLCentre(viewer->GetController(), "%s", text);
+		viewerState->shown = true;
 	}
 
 	void OnGameFrame()
