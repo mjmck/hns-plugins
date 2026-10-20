@@ -46,6 +46,8 @@ namespace hns::config
 			{"hns_ct_spawn_decoy",      SettingDef::Bool,  &settings.ctSpawnDecoy,         "1 = CTs get a decoy when they spawn."},
 			{"hns_t_spawn_grenades",    SettingDef::Bool,  &settings.tSpawnGrenades,       "1 = Ts get a smoke grenade and a flashbang when they spawn."},
 			{"hns_knife_cooldown",      SettingDef::Float, &settings.knifeCooldown,        "Seconds a stabbed T takes no further knife damage (tinted red meanwhile). 0 = no cooldown."},
+			{"hns_understab",           SettingDef::Bool,  &settings.understab,            "1 = deny CT stabs on a T standing (or last standing) more than hns_understab_height units above the CT's floor."},
+			{"hns_understab_height",    SettingDef::Float, &settings.understabHeight,      "Understab: height in units the T's ground may be above the CT's floor before a stab is denied."},
 			{"hns_knife_damage",        SettingDef::Float, &settings.knifeDamage,          "Damage of every CT knife hit on a T, backstabs included. 0 = game default."},
 			{"hns_join_sound",          SettingDef::Bool,  &settings.joinSound,            "1 = play a server-wide sound when a player listed in join-sounds.cfg joins."},
 			{"hns_join_sound_delay",    SettingDef::Float, &settings.joinSoundDelay,       "Seconds after the listed player is in the server and Steam-validated before their join sound plays."},
