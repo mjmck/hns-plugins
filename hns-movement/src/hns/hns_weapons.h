@@ -13,6 +13,7 @@ class PlayerCommand;
 //   - Every CT knife hit on a T does a fixed amount of damage (default 55), backstabs included.
 //   - Understab (hns_understab, hns_understab_height): a stab is denied when the T stands, or last stood before jumping,
 //     more than 65 units above the floor the CT is standing on or above. Both get "UNDERSTAB! Stab Denied" in chat.
+//     Exception: a T standing on (or who last stood on) a CT's head can be stabbed by any CT.
 namespace hns::weapons
 {
 	// Resolves the optional signatures. Missing ones only disable the matching rule.

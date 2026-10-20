@@ -51,7 +51,7 @@ the TryPlayerMove path is still recorded so it can be added later).
 | `hns_rampbug_min_distance` | 1.0 | Rampbug fix minimum gain (CS2KZ constant). |
 | `hns_warn_external_change` | 1 | Warn when something else changes an enforced cvar. |
 | `hns_debug_perf` | 0 | Print every takeoff (perf, ground time, speeds) to the console. |
-| `hns_understab` | 1 | Deny a CT stab when the T stands (or last stood before jumping) more than `hns_understab_height` units above the floor the CT is on or above. Both players see "UNDERSTAB! Stab Denied" (UNDERSTAB! in red). |
+| `hns_understab` | 1 | Deny a CT stab when the T stands (or last stood before jumping) more than `hns_understab_height` units above the floor the CT is on or above. Both players see "UNDERSTAB! Stab Denied" (UNDERSTAB! in red). A T standing on (or who last stood on) a CT's head can always be stabbed. |
 | `hns_understab_height` | 65 | Understab height limit in units. |
 | `hns_solid_teammates` | 0 | Enforced into `mp_solid_teammates` (0 = pass through, 1 = solid, 2 = solid, no standing on heads). 0 matches CS2KZ; the rampbug fix assumes teammates don't collide. |
 
