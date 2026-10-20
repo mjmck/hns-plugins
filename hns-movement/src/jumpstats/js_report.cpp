@@ -1,6 +1,6 @@
 // Jump reporting, tiers and settings. Reporting rules follow CS2KZ src/kz/jumpstats/jump_reporting.cpp (AGPL-3.0):
-// the full report and tier sound use the same code (utils::PlaySoundToClient), but on this server they only ever go to
-// the jumper: no broadcast to other players and no report for spectators. Player preferences are replaced by server settings in
+// the full report and tier sound use the same code (utils::PlaySoundToClient), but on this server they only go to the
+// jumper and the spectators watching them: no broadcast to other players. Player preferences are replaced by server settings in
 // hns-movement.cfg plus the per-player !js / !jssound switches; tiers and sounds come from jumpstats.cfg.
 #include "js_jumpstats.h"
 #include "hns/hns_player.h"
@@ -347,6 +347,38 @@ namespace hns::jumpstats
 		utils::PlaySoundToClient(target->GetPlayerSlot(), tables.sounds[tier].c_str(), Clamp(hns::config::settings.jsVolume, 0.0f, 1.0f));
 	}
 
+	// True when viewer is a spectator (or dead player) watching target's pawn in first or third person. A live player is
+	// never treated as a spectator, whatever their observer services say.
+	static_function bool IsSpectating(HNSPlayer *viewer, CCSPlayerPawn *target)
+	{
+		if (!target || !viewer->IsConnectedController() || viewer->IsFakeClient())
+		{
+			return false;
+		}
+		CCSPlayerController *controller = viewer->GetController();
+		if (!controller)
+		{
+			return false;
+		}
+		CCSPlayerPawn *ownPawn = controller->GetPlayerPawn();
+		if (ownPawn && ownPawn->IsAlive())
+		{
+			return false;
+		}
+		CCSPlayerPawnBase *observer = controller->GetObserverPawn();
+		if (!observer || !observer->m_pObserverServices())
+		{
+			return false;
+		}
+		CPlayer_ObserverServices *obs = observer->m_pObserverServices();
+		ObserverMode_t mode = obs->m_iObserverMode();
+		if (mode != OBS_MODE_IN_EYE && mode != OBS_MODE_CHASE)
+		{
+			return false;
+		}
+		return obs->m_hObserverTarget().Get() == target;
+	}
+
 	void AnnounceJump(Jump *jump)
 	{
 		if (!hns::config::settings.jumpstats || jump->jumpType == JumpType_FullInvalid)
@@ -363,14 +395,28 @@ namespace hns::jumpstats
 		{
 			return;
 		}
-		// Jumpstats are private: only the jumper gets the report and the sound. Nobody else (other players, spectators) sees
-		// or hears anything about this jump.
+		// Jumpstats are private: the jumper and the spectators watching them (first or third person) get the report and
+		// the sound. Nobody else sees or hears anything about this jump.
 		HNSPlayer *jumper = jump->player;
-		if (jumper && jumper->processingMovement && jumper->IsConnectedController() && !jumper->IsFakeClient() && jumper->jumpstats->reporting)
+		if (!jumper || !jumper->processingMovement || !jumper->IsConnectedController() || jumper->IsFakeClient())
 		{
-			PrintJumpToChat(jumper, jump, tier);
-			PrintJumpToConsole(jumper, jump, tier);
-			PlayJumpstatSound(jumper, tier);
+			return;
+		}
+		CCSPlayerPawn *jumperPawn = jumper->GetPlayerPawn();
+		for (i32 i = 0; i < MAXPLAYERS; i++)
+		{
+			HNSPlayer *viewer = g_pHNSPlayerManager->ToPlayer(CPlayerSlot(i));
+			if (!viewer || !viewer->jumpstats->reporting)
+			{
+				continue;
+			}
+			if (viewer != jumper && !IsSpectating(viewer, jumperPawn))
+			{
+				continue;
+			}
+			PrintJumpToChat(viewer, jump, tier);
+			PrintJumpToConsole(viewer, jump, tier);
+			PlayJumpstatSound(viewer, tier);
 		}
 	}
 

@@ -6,7 +6,7 @@
 // every validity check (collisions, base velocity, water, noclip, teleports, edgebugs, gravity, ...), the chat and
 // console report and the kz.* tier sounds.
 // Left out: failstats and jsalways, the HUD panel, strafe graphs, option menus, translations, styles, replays.
-// HNS changes: reports and sounds go to the jumper only (no broadcast, no spectators); tier tables, sounds and limits
+// HNS changes: reports and sounds go to the jumper and their spectators only (no broadcast); tier tables, sounds and limits
 // in cfg/hns-movement/jumpstats.cfg; Redie ghosts never report.
 
 #include "common.h"
@@ -315,7 +315,7 @@ namespace hns::jumpstats
 
 	DistanceTier GetDistanceTier(JumpType jumpType, f32 distance);
 
-	// Chat, console and tier sound for the jumper only.
+	// Chat, console and tier sound for the jumper and the spectators watching them, nobody else.
 	void AnnounceJump(Jump *jump);
 
 	void OnBuildGameSessionManifest(IEntityResourceManifest *manifest);

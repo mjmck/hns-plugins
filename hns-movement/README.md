@@ -105,7 +105,7 @@ changes do not replay it. Custom audio ships in a Workshop addon mounted by Mult
 
 CS2KZ's jumpstats, ported into `src/jumpstats/` and driven by the same movement hooks: LJ, BH, MBH, WJ, LAJ, LAH and JB
 with distance (distbug fix), strafes, sync, pre/max, height, edge, block, W release and CS2KZ's validity checks. Only the
-jumper gets the chat and console report and the tier sound; nobody else sees or hears it (`hns_js_*` in hns-movement.cfg). Tier distances, the 500 unit cap and the tier sounds are in `cfg/jumpstats.cfg`;
+jumper and the spectators watching them get the chat and console report and the tier sound; nobody else sees or hears it (`hns_js_*` in hns-movement.cfg). Tier distances, the 500 unit cap and the tier sounds are in `cfg/jumpstats.cfg`;
 defaults are CS2KZ Classic, which this server's movement settings outgrow. Sounds are CS2KZ's `kz.*` events and need
 its workshop addon 3469155349 mounted with MultiAddonManager. Players toggle with `!js` and `!jssound`. Not ported:
 failstats, jsalways, the HUD panel, strafe graphs and option menus. Redie ghosts never report.
