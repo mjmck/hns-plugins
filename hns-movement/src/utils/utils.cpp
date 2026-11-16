@@ -2,6 +2,7 @@
 
 #include <filesystem>
 #include "utils.h"
+#include "hns/hns_netmsg.h"
 #include "hns_plugin.h"
 #include "player/player.h"
 #include "sdk/entity/cbasetrigger.h"
@@ -266,7 +267,7 @@ void utils::PlaySoundToClient(CPlayerSlot player, const char *sound, std::option
 	{
 		return;
 	}
-	NetMessageInfo_t *netmsg = g_pNetworkMessages->FindNetworkMessagePartial("CMsgSosStartSoundEvent");
+	NetMessageInfo_t *netmsg = hns::netmsg::Get(hns::netmsg::SosStartSoundEvent);
 	if (!netmsg)
 	{
 		return;
@@ -433,7 +434,11 @@ void utils::SendConVarValue(CPlayerSlot slot, const char *conVar, const char *va
 	{
 		return;
 	}
-	NetMessageInfo_t *netmsg = g_pNetworkMessages->FindNetworkMessagePartial("SetConVar");
+	NetMessageInfo_t *netmsg = hns::netmsg::Get(hns::netmsg::SetConVar);
+	if (!netmsg)
+	{
+		return;
+	}
 	auto msg = netmsg->AllocateMessage()->ToPB<CNETMsg_SetConVar>();
 	CMsg_CVars_CVar *cvar = msg->mutable_convars()->add_cvars();
 	cvar->set_name(conVar);
@@ -450,7 +455,11 @@ void utils::SendMultipleConVarValues(CPlayerSlot slot, const char **cvars, const
 	{
 		return;
 	}
-	NetMessageInfo_t *netmsg = g_pNetworkMessages->FindNetworkMessagePartial("SetConVar");
+	NetMessageInfo_t *netmsg = hns::netmsg::Get(hns::netmsg::SetConVar);
+	if (!netmsg)
+	{
+		return;
+	}
 	auto msg = netmsg->AllocateMessage()->ToPB<CNETMsg_SetConVar>();
 	for (u32 i = 0; i < size; i++)
 	{
@@ -490,7 +499,11 @@ void utils::SendMultipleConVarValues(CPlayerSlot slot, ConVarRefAbstract **conVa
 	{
 		return;
 	}
-	NetMessageInfo_t *netmsg = g_pNetworkMessages->FindNetworkMessagePartial("SetConVar");
+	NetMessageInfo_t *netmsg = hns::netmsg::Get(hns::netmsg::SetConVar);
+	if (!netmsg)
+	{
+		return;
+	}
 	auto msg = netmsg->AllocateMessage()->ToPB<CNETMsg_SetConVar>();
 	for (u32 i = 0; i < size; i++)
 	{
@@ -515,7 +528,11 @@ void utils::SendMultipleConVarValues(CPlayerSlot slot, ConVarRefAbstract **conVa
 	{
 		return;
 	}
-	NetMessageInfo_t *netmsg = g_pNetworkMessages->FindNetworkMessagePartial("SetConVar");
+	NetMessageInfo_t *netmsg = hns::netmsg::Get(hns::netmsg::SetConVar);
+	if (!netmsg)
+	{
+		return;
+	}
 	auto msg = netmsg->AllocateMessage()->ToPB<CNETMsg_SetConVar>();
 	for (u32 i = 0; i < size; i++)
 	{

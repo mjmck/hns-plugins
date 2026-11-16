@@ -78,6 +78,7 @@ def configure_main(sdk_target, sdk, cxx, protoc_builder):
     os.path.join(builder.sourcePath, 'src', 'hns', 'hns_joinsound.cpp'),
     os.path.join(builder.sourcePath, 'src', 'hns', 'hns_eventsounds.cpp'),
     os.path.join(builder.sourcePath, 'src', 'hns', 'hns_safety.cpp'),
+    os.path.join(builder.sourcePath, 'src', 'hns', 'hns_netmsg.cpp'),
     os.path.join(builder.sourcePath, 'src', 'hns', 'hns_crashlog.cpp'),
     os.path.join(builder.sourcePath, 'src', 'jumpstats', 'js_jumpstats.cpp'),
     os.path.join(builder.sourcePath, 'src', 'jumpstats', 'js_validate.cpp'),

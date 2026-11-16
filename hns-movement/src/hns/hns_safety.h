@@ -9,7 +9,8 @@
 // joinable when that happens:
 //
 // 1. Self-test at the first map start (the engine registers its network messages after plugins load). The layout that the 12 Nov update changed (the thing that froze the server) is
-//    checked with reads that cannot crash: the messages the plugin sends must be found by name and look valid.
+//    checked with reads that cannot crash (hns_netmsg): a message record that does not look valid switches the plugin
+//    off; a message that is only missing just disables the sends that need it.
 //
 // 2. Crash breaker, per CS2 server version. The first time the plugin runs on a CS2 version it has not run on before,
 //    it writes "<version> probing" to cfg/hns-movement/.runstate as soon as a human player is in the game. Once a player
@@ -47,4 +48,8 @@ namespace hns::safety
 	void PrintSafeModeWarning();
 
 	void PrintStatus();
+
+	// Copies n (max 512) bytes from addr without crashing if addr is not readable. Copy into plain bytes only: never
+	// into an engine type with a destructor (a CUtlString copy frees the engine's string when it goes out of scope).
+	bool SafeRead(const void *addr, void *out, size_t n);
 } // namespace hns::safety

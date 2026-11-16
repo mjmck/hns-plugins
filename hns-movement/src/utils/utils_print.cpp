@@ -5,6 +5,7 @@
 #include "sdk/entity/cbaseplayercontroller.h"
 #include "sdk/recipientfilters.h"
 #include "utils.h"
+#include "hns/hns_netmsg.h"
 
 #include "tier0/memdbgon.h"
 
@@ -262,7 +263,11 @@ void utils::ClientPrintFilter(IRecipientFilter *filter, int msg_dest, const char
 	{
 		return;
 	}
-	NetMessageInfo_t *netmsg = g_pNetworkMessages->FindNetworkMessagePartial("TextMsg");
+	NetMessageInfo_t *netmsg = hns::netmsg::Get(hns::netmsg::TextMsg);
+	if (!netmsg)
+	{
+		return;
+	}
 	auto msg = netmsg->AllocateMessage()->ToPB<CUserMessageTextMsg>();
 	msg->set_dest(msg_dest);
 	msg->add_param(msg_name);
@@ -297,7 +302,11 @@ void utils::SayChat(CBaseEntity *entity, const char *format, ...)
 	{
 		return;
 	}
-	NetMessageInfo_t *netmsg = g_pNetworkMessages->FindNetworkMessagePartial("SayText2");
+	NetMessageInfo_t *netmsg = hns::netmsg::Get(hns::netmsg::SayText2);
+	if (!netmsg)
+	{
+		return;
+	}
 	auto msg = netmsg->AllocateMessage()->ToPB<CUserMessageSayText2>();
 	msg->set_entityindex(entity->entindex());
 	msg->set_messagename(coloredBuffer);

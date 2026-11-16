@@ -126,7 +126,11 @@ What breaks, and how the plugin protects the server:
 - **Changed engine interfaces** (moved virtual functions, changed structs) don't fail cleanly; calling through them can
   crash or freeze the server. 16 Nov 2026: CS2's 12 Nov update changed the network message table, and every player
   join froze the server until the watchdog killed it. Two safety checks now cover this (`src/hns/hns_safety.h`):
-  - a **self-test** at load that checks the network messages the plugin sends, with reads that cannot crash;
+  - a **self-test** at the first map start that checks the network messages the plugin sends, with reads that cannot
+    crash (`src/hns/hns_netmsg.h`). Every send looks its message up through `hns::netmsg::Get()`, which tries full name,
+    partial name, then protobuf id, caches the result, and skips the send (one warning) instead of crashing if nothing
+    is found. `hns_netmsg_status` prints what was found. Never copy an engine record such as `NetMessageInfo_t` by
+    value: its `CUtlString` destructor frees the engine's own string (this crashed every join on 16 Nov 2026);
   - a **crash breaker** per CS2 server version: if the server dies before a player has played
     `hns_safety_confirm_seconds` (180) on a new CS2 version, the next start is in **safe mode**.
   In safe mode the plugin is loaded but does nothing (no hooks, nothing changed, as if the .vdf were renamed `.off`), the

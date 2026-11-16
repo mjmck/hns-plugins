@@ -1,6 +1,7 @@
 #include "hns_safety.h"
 #include "hns_config.h"
 #include "utils/utils.h"
+#include "hns_netmsg.h"
 
 #include "networksystem/inetworkmessages.h"
 
@@ -33,8 +34,7 @@ namespace hns::safety
 	static_global f64 confirmedSeconds {};
 	static_global f64 lastFrameTime {};
 
-	// Copies n bytes from addr without crashing if addr is not readable.
-	static_function bool SafeRead(const void *addr, void *out, size_t n)
+	bool SafeRead(const void *addr, void *out, size_t n)
 	{
 		if (!addr)
 		{
@@ -67,67 +67,21 @@ namespace hns::safety
 #endif
 	}
 
-	// The messages the plugin sends (chat, centre text, sounds, cvar replication). If the engine's message table no
-	// longer looks like NetMessageInfo_t, every one of those sends would call garbage.
-	static_function bool CheckNetMessage(const char *name, char *reason, size_t maxlen)
-	{
-		NetMessageInfo_t *info = g_pNetworkMessages ? g_pNetworkMessages->FindNetworkMessagePartial(name) : nullptr;
-		if (!info)
-		{
-			snprintf(reason, maxlen, "network message %s not found", name);
-			return false;
-		}
-		NetMessageInfo_t copy;
-		if (!SafeRead(info, &copy, sizeof(copy)))
-		{
-			snprintf(reason, maxlen, "network message %s: info not readable", name);
-			return false;
-		}
-		// CUtlString is a single char pointer.
-		const char *namePtr = nullptr;
-		static_assert(sizeof(CUtlString) == sizeof(const char *), "CUtlString layout changed");
-		memcpy(&namePtr, &copy.m_szName, sizeof(namePtr));
-		char nameBuf[128] = {};
-		if (!SafeRead(namePtr, nameBuf, sizeof(nameBuf) - 1))
-		{
-			// The string may sit near the end of a page; retry with a shorter read.
-			memset(nameBuf, 0, sizeof(nameBuf));
-			if (!SafeRead(namePtr, nameBuf, strlen(name) + 1))
-			{
-				snprintf(reason, maxlen, "network message %s: name not readable (struct layout changed?)", name);
-				return false;
-			}
-		}
-		nameBuf[sizeof(nameBuf) - 1] = '\0';
-		if (!strstr(nameBuf, name))
-		{
-			snprintf(reason, maxlen, "network message %s: name reads as '%.40s' (struct layout changed?)", name, nameBuf);
-			return false;
-		}
-		if (!copy.m_pfnAllocateMessage)
-		{
-			snprintf(reason, maxlen, "network message %s: no allocator (struct layout changed?)", name);
-			return false;
-		}
-		u8 code;
-		if (!SafeRead((const void *)copy.m_pfnAllocateMessage, &code, 1))
-		{
-			snprintf(reason, maxlen, "network message %s: allocator not readable (struct layout changed?)", name);
-			return false;
-		}
-		return true;
-	}
-
+	// The messages the plugin sends (chat, centre text, sounds, cvar replication). hns::netmsg checks each one with
+	// reads that cannot crash. A message that is missing only disables that feature (sends are skipped); a message
+	// whose record does not look like NetMessageInfo_t means the engine layout changed, and every send would call
+	// garbage, so that switches the plugin off.
 	static_function bool SelfTest(char *reason, size_t maxlen)
 	{
-		static_persist const char *messages[] = {"TextMsg", "SayText2", "CMsgSosStartSoundEvent", "SetConVar"};
-		for (const char *name : messages)
+		hns::netmsg::ResolveAll();
+		for (i32 i = 0; i < hns::netmsg::COUNT; i++)
 		{
-			if (!CheckNetMessage(name, reason, maxlen))
+			if (hns::netmsg::LayoutBroken((hns::netmsg::Message)i, reason, maxlen))
 			{
 				return false;
 			}
 		}
+		hns::netmsg::PrintSummary();
 		return true;
 	}
 
@@ -228,6 +182,14 @@ namespace hns::safety
 		}
 		selfTestRan = true;
 		selfTestPassed = SelfTest(reason, maxlen);
+		if (selfTestPassed)
+		{
+			HNS_LOG_INFO(LogChannel::General, "Self-test passed.\n");
+		}
+		else
+		{
+			HNS_LOG_WARN(LogChannel::General, "Self-test FAILED: %s\n", reason);
+		}
 		if (!selfTestPassed)
 		{
 			safeMode = true;
