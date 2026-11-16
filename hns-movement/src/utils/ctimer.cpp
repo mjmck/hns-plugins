@@ -1,15 +1,16 @@
 #include "ctimer.h"
 
-CUtlVector<CTimerBase *> g_NonPersistentTimers;
-CUtlVector<CTimerBase *> g_PersistentTimers;
+std::vector<CTimerBase *> g_NonPersistentTimers;
+std::vector<CTimerBase *> g_PersistentTimers;
 
-static_function void ProcessTimerList(CUtlVector<CTimerBase *> &timers)
+static_function void ProcessTimerList(std::vector<CTimerBase *> &timers)
 {
-	for (int i = timers.Count() - 1; i >= 0; i--)
+	for (size_t i = timers.size(); i-- > 0;)
 	{
 		auto timer = timers[i];
-		f64 currentTime = timer->useRealTime ? g_pKZUtils->GetGlobals()->realtime : g_pKZUtils->GetGlobals()->curtime;
-		if (timer->lastExecute == -1)
+		// The server's realtime and curtime both start over with each map, which a persistent timer would otherwise wait out.
+		f64 currentTime = timer->useRealTime ? Plat_FloatTime() : g_pKZUtils->GetGlobals()->curtime;
+		if (timer->lastExecute == -1 || currentTime < timer->lastExecute)
 		{
 			timer->lastExecute = currentTime;
 		}
@@ -19,7 +20,7 @@ static_function void ProcessTimerList(CUtlVector<CTimerBase *> &timers)
 			if (!timer->Execute())
 			{
 				delete timer;
-				timers.Remove(i);
+				timers.erase(timers.begin() + i);
 			}
 			else
 			{
@@ -37,11 +38,23 @@ void ProcessTimers()
 
 void RemoveAllTimers()
 {
-	g_PersistentTimers.PurgeAndDeleteElements();
-	g_NonPersistentTimers.PurgeAndDeleteElements();
+	for (CTimerBase *timer : g_PersistentTimers)
+	{
+		delete timer;
+	}
+	g_PersistentTimers.clear();
+	for (CTimerBase *timer : g_NonPersistentTimers)
+	{
+		delete timer;
+	}
+	g_NonPersistentTimers.clear();
 }
 
 void RemoveNonPersistentTimers()
 {
-	g_NonPersistentTimers.PurgeAndDeleteElements();
+	for (CTimerBase *timer : g_NonPersistentTimers)
+	{
+		delete timer;
+	}
+	g_NonPersistentTimers.clear();
 }

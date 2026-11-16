@@ -4,6 +4,7 @@
 #include <string_view>
 
 #include "common.h"
+#include "engine2/gameshareddefs.h"
 #include "version_gen.h"
 
 class HNSPlugin;
@@ -62,6 +63,9 @@ public:
 		return PLUGIN_LOGTAG;
 	}
 
+	// Safe mode at runtime: removes every hook, leaves the plugin loaded (hns_safety.h).
+	void SwitchOff();
+
 	virtual void OnLevelInit(char const *pMapName, char const *pMapEntities, char const *pOldLevel, char const *pLandmarkName, bool loadGame,
 							 bool background) override;
 
@@ -71,6 +75,8 @@ public:
 	CGlobalVars serverGlobals;
 	bool unloading = false;
 	bool loading = true;
+	// Safe mode: hooks removed at runtime by SwitchOff (hns_safety.h).
+	bool switchedOff = false;
 
 private:
 	std::string m_sCurrentMap;

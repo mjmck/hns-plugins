@@ -46,8 +46,8 @@ public:
 	// Movement hooks
 	virtual void OnPhysicsSimulate() override;
 	virtual void OnPhysicsSimulatePost() override;
-	virtual void OnSetupMove(PlayerCommand *pc) override;
-	virtual void OnProcessUsercmds(PlayerCommand *cmds, int numcmds) override;
+	virtual void OnSetupMove(CUserCmd *pc) override;
+	virtual void OnProcessUsercmds(CUserCmd *cmds, int numcmds) override;
 	virtual void OnProcessMovement() override;
 	virtual void OnProcessMovementPost() override;
 	virtual void OnPlayerMove() override;
@@ -79,10 +79,11 @@ class HNSPlayerManager : public MovementPlayerManager
 public:
 	HNSPlayerManager()
 	{
-		for (int i = 0; i < MAXPLAYERS + 1; i++)
+		// players[slot] holds the player whose controller is entity index slot + 1.
+		for (i32 i = 0; i < MAX_PLAYERS; i++)
 		{
 			delete players[i];
-			players[i] = new HNSPlayer(i);
+			players[i] = new HNSPlayer(i + 1);
 		}
 	}
 
@@ -93,7 +94,6 @@ public:
 	HNSPlayer *ToPlayer(CPlayerSlot slot);
 	HNSPlayer *ToPlayer(CEntityIndex entIndex);
 	HNSPlayer *ToPlayer(CPlayerUserId userID);
-	HNSPlayer *ToPlayer(u32 index);
 };
 
 extern HNSPlayerManager *g_pHNSPlayerManager;

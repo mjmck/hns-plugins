@@ -13,8 +13,6 @@ public:
 	CSOPersonaDataPublic data;
 };
 
-extern CSteamGameServerAPIContext g_steamAPI;
-
 CCSPlayerController *Player::GetController()
 {
 	if (!GameEntitySystem())
@@ -37,14 +35,9 @@ void Player::Kick(const char *internalReason, ENetworkDisconnectionReason reason
 void Player::OnAuthorized()
 {
 	auto steamID = this->GetClient()->GetClientSteamID();
-	if (!g_steamAPI.SteamGameServer())
-	{
-		g_steamAPI.Init();
-	}
 	if (CommandLine()->HasParm("-dedicated"))
 	{
-		this->hasPrime = (g_steamAPI.SteamGameServer()
-						  && g_steamAPI.SteamGameServer()->UserHasLicenseForApp(steamID, 624820) == k_EUserHasLicenseResultHasLicense);
+		this->hasPrime = (SteamGameServer() && SteamGameServer()->UserHasLicenseForApp(steamID, 624820) == k_EUserHasLicenseResultHasLicense);
 	}
 	CEconPersonaDataPublic *persona = this->GetController()->m_pInventoryServices()->GetPublicPersonaData();
 	if (persona && persona->data.elevated_state())
@@ -57,7 +50,7 @@ void Player::SetName(const char *name)
 {
 	if (this->GetClient())
 	{
-		this->GetClient()->m_ConVars->SetString("name", name);
+		this->GetClient()->m_pUserInfo->SetString("name", name);
 		this->GetClient()->UpdateUserSettings();
 		this->GetClient()->SetName(name);
 	}
@@ -77,12 +70,16 @@ bool Player::CheckPrime()
 	{
 		return true;
 	}
+	// An away player has no client to check, so they keep what was known when they left.
+	if (!this->GetClient() || !this->GetController())
+	{
+		return false;
+	}
 	auto steamID = this->GetClient()->GetClientSteamID();
 
 	if (CommandLine()->HasParm("-dedicated"))
 	{
-		this->hasPrime |= (g_steamAPI.SteamGameServer()
-						   && g_steamAPI.SteamGameServer()->UserHasLicenseForApp(steamID, 624820) == k_EUserHasLicenseResultHasLicense);
+		this->hasPrime |= (SteamGameServer() && SteamGameServer()->UserHasLicenseForApp(steamID, 624820) == k_EUserHasLicenseResultHasLicense);
 	}
 	CEconPersonaDataPublic *persona = this->GetController()->m_pInventoryServices()->GetPublicPersonaData();
 	this->hasPrime |= (persona && persona->data.elevated_state());

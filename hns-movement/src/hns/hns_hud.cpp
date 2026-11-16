@@ -26,7 +26,7 @@ namespace hns::hud
 		bool shown {};  // the HUD is currently on this player's screen
 	};
 
-	static State states[MAXPLAYERS + 1];
+	static State states[MAX_PLAYERS + 1];
 
 	static_function i32 Tick()
 	{
@@ -36,7 +36,7 @@ namespace hns::hud
 	static_function State *GetState(HNSPlayer *player)
 	{
 		i32 slot = player ? player->GetPlayerSlot().Get() : -1;
-		return (slot >= 0 && slot <= MAXPLAYERS) ? &states[slot] : nullptr;
+		return (slot >= 0 && slot <= MAX_PLAYERS) ? &states[slot] : nullptr;
 	}
 
 	void OnPlayerReset(HNSPlayer *player)
@@ -64,7 +64,7 @@ namespace hns::hud
 		return !state->hidden;
 	}
 
-	void OnProcessUsercmds(HNSPlayer *player, PlayerCommand *cmds, int numcmds)
+	void OnProcessUsercmds(HNSPlayer *player, CUserCmd *cmds, int numcmds)
 	{
 		State *state = GetState(player);
 		if (!state || !cmds || numcmds <= 0)
@@ -74,7 +74,7 @@ namespace hns::hud
 		bool jumpInput = false;
 		for (i32 i = 0; i < numcmds; i++)
 		{
-			PlayerCommand &cmd = cmds[i];
+			CUserCmd &cmd = cmds[i];
 			// [0] held, [1] changed this tick, [2] scroll. A wheel jump sets jump in [1]/[2] and in a subtick step,
 			// but is already released again by the end of the tick, so [0] alone misses it.
 			for (i32 k = 0; k < 3; k++)
@@ -150,7 +150,7 @@ namespace hns::hud
 			return nullptr;
 		}
 		CPlayer_ObserverServices *obs = observer->m_pObserverServices();
-		ObserverMode_t mode = obs->m_iObserverMode();
+		ObserverMode_t mode = (ObserverMode_t)obs->m_iObserverMode();
 		if (mode != OBS_MODE_IN_EYE && mode != OBS_MODE_CHASE)
 		{
 			return nullptr;
@@ -225,7 +225,7 @@ namespace hns::hud
 			return;
 		}
 		i32 tick = Tick();
-		for (i32 i = 0; i < MAXPLAYERS; i++)
+		for (i32 i = 0; i < MAX_PLAYERS; i++)
 		{
 			HNSPlayer *player = g_pHNSPlayerManager->ToPlayer(CPlayerSlot(i));
 			if (!player || !player->IsConnectedController() || player->IsFakeClient())

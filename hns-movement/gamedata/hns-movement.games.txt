@@ -4,6 +4,13 @@
 	{
 		"Signatures"
 		{
+			// The function that calls the leaving state's slot 1, then the one that logs "ShowStateTransitions: player '%s'(%s) entering"
+			"CCSPlayerPawnBase_StateTransition"
+			{
+				"library"	"server"
+				"windows"	"48 89 5C 24 08 57 48 83 EC 20 48 8B D9 8B FA 48 8B 89 ?? ?? ?? ?? 48 85 C9 74 ?? 48 8B 01 FF 50 08"
+				"linux"		"55 48 89 E5 41 54 41 89 F4 53 48 89 FB 48 8B BF ?? ?? ?? ?? 48 85 FF 74 ?? 48 8B 07 FF 50 08"
+			}
 			// From CounterStrikeSharp gamedata (v1.0.376). Optional: knife damage override.
 			"CBaseEntity_TakeDamageOld"
 			{
@@ -44,7 +51,7 @@
 			"RecvServerBrowserPacket"
 			{
 				"library" 	"steamnetworkingsockets"
-				"windows" 	"48 89 6C 24 18 56 48 83 EC 20 48 8B F1 48 8B EA"
+				"windows" 	"48 89 6C 24 18 56 48 83 EC 20 48 8B F1 48 8B EA 8B 49 08"
 				"linux" 	"41 54 55 48 89 F5 53 48 89 FB 48 63 47 08"
 			}
 			// Find handler for setang console command, it's in the other branch that doesn't use "cpredictionevent_teleport" msg
@@ -268,15 +275,8 @@
 			"PostThink"
 			{
 				"library"	"server"
-				"windows"	"40 55 56 41 54 48 8B EC 48 83 EC 50"
-				"linux"		"55 48 89 E5 41 56 41 55 41 54 53 48 89 FB 48 83 EC ?? E8 ?? ?? ?? ?? 80 BB"
-			}
-			// search for "CT_Water.StepLeft", this is called after that string is referenced (the one with 4 parameters).
-			"EmitSound"
-			{
-				"library"	"server"
-				"windows"	"40 53 48 83 EC ?? 4C 89 4C 24 ?? 48 8B D9 45 8B C8"
-				"linux"		"55 48 89 E5 53 48 89 FB 48 83 EC ?? E8 ?? ?? ?? ?? 48 89 D8 48 8B 5D ?? C9 C3 CC CC CC CC CC CC 48 B8"
+				"windows"	"40 55 53 56 57 41 54 48 8B EC 48 83 EC ?? 4C 89 AC 24"
+				"linux"		"55 48 89 E5 41 57 41 56 41 55 41 54 53 48 89 FB 48 83 EC ?? E8 ?? ?? ?? ?? 80 BB ?? ?? ?? ?? 00 74 ?? C6 83"
 			}
 			// "%sRecv usercmd %d.  Margin:%5.1fms net +%2d queue =%5.1f"
 			"ProcessUsercmds"
@@ -350,21 +350,30 @@
 		}
 		"Offsets"
 		{
+			// CCSObserver_ObserverServices, the function that casts its target to CPlantedC4 through RTTI
+			"IsValidObserverTarget"
+			{
+				"windows"		"34"
+				"linux"			"35"
+			}
+			// CBaseEntity::PhysicsSimulate, four slots before Teleport. CBasePlayerPawn's override logs "CBasePlayerPawn::PhysicsSimulate".
+			"EntityPhysicsSimulate"
+			{
+				"windows"		"161"
+				"linux"			"160"
+			}
+			// ISoundSystem virtual that hands out a new sound event guid.
+			// "snd_break_on_start_soundevent" cvar, the g_pSoundSystem call in the function that reads it (vtable offset / 8).
+			"TakeSoundGuid"
+			{
+				"windows"		"78"
+				"linux"			"77"
+			}
 			// From CounterStrikeSharp gamedata (v1.0.376): spawn grenades for Ts.
 			"CCSPlayer_ItemServices_GiveNamedItem"
 			{
 				"windows"		"23"
 				"linux"			"24"
-			}
-			"QuietPlayerSlot"
-			{
-				"windows"		"576"
-				"linux"			"576"
-			}
-			"GameEntitySystem"
-			{
-				"windows"		"88"
-				"linux"			"80"
 			}
 			"Teleport"
 			{
@@ -414,12 +423,6 @@
 				"windows"		"351"
 				"linux"			"352"
 			}
-			// Check sv_fullupdate
-			"ClientOffset"
-			{
-				"windows"		"616"
-				"linux"			"616"
-			}
 			// teleport_trigger_debug cvar
 			"StartTouch"
 			{
@@ -455,11 +458,6 @@
 			//   qword_1815F16E8 = debugoverlay;
 			// xref to the other read, that's where the function is
 			
-			"GetDebugOverlay"
-			{
-				"windows"		"74"
-				"linux"			"74"
-			}
 			"ClearOverlays"
 			{
 				"windows"		"2"

@@ -4,7 +4,7 @@
 class HNSPlayer;
 class CBaseEntity;
 class CTakeDamageInfo;
-class PlayerCommand;
+class CUserCmd;
 
 // HNS weapon rules (hns_no_guns, hns_knife_ct_only, hns_knife_stab_only, hns_knife_damage):
 //   - No guns for anyone: any firearm or taser a player holds (bought, picked up, given by the map) is removed.
@@ -25,7 +25,7 @@ namespace hns::weapons
 	// Once per server frame, before players are simulated.
 	void OnGameFrame();
 	// Before the game runs a CT's commands: with the knife out, left click (+attack) becomes a stab (+attack2).
-	void RemapKnifeAttack(HNSPlayer *player, PlayerCommand *cmds, int numcmds);
+	void RemapKnifeAttack(HNSPlayer *player, CUserCmd *cmds, int numcmds);
 	// player_spawn: queue the T spawn grenades (given a few ticks later, after the game's own loadout).
 	void OnPlayerSpawn(i32 slot);
 	// TakeDamageOld pre-hook. Returns true to block the damage entirely.

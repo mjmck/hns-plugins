@@ -3,8 +3,8 @@
 #include "entity2/entitysystem.h"
 #include "steam/steam_gameserver.h"
 
-#include "sdk/cgameresourceserviceserver.h"
 #include "utils/utils.h"
+#include "utils/addresses.h"
 #include "utils/hooks.h"
 #include "utils/gameconfig.h"
 #include "utils/ctimer.h"
@@ -16,18 +16,20 @@
 #include "hns/hns_commands.h"
 #include "hns/hns_gameplay.h"
 #include "hns/hns_compat.h"
+#include "hns/hns_safety.h"
+#include "hns/hns_crashlog.h"
 
 #include "tier0/memdbgon.h"
 
 HNSPlugin g_HNSPlugin;
-// Used by Player::OnAuthorized (prime check) in the shared player layer.
-CSteamGameServerAPIContext g_steamAPI;
 
 PLUGIN_EXPOSE(HNSPlugin, g_HNSPlugin);
 
 bool HNSPlugin::Load(PluginId id, ISmmAPI *ismm, char *error, size_t maxlen, bool late)
 {
 	PLUGIN_SAVEVARS();
+	// First, so a crash anywhere after this (load, join, round) leaves a call stack in the console and in cfg/hns-movement.
+	hns::crashlog::Install();
 	modules::Initialize();
 
 	if (!interfaces::Initialize(ismm, error, maxlen))
@@ -48,6 +50,19 @@ bool HNSPlugin::Load(PluginId id, ISmmAPI *ismm, char *error, size_t maxlen, boo
 		return false;
 	}
 
+	hns::config::Load();
+
+	// CS2 update safety net: if the engine looks changed, or the server died last time on this CS2 version, stay loaded
+	// but switched off instead of risking a crash or a freeze.
+	char reason[256];
+	if (!hns::safety::CheckBeforeHooks(reason, sizeof(reason)))
+	{
+		ismm->AddListener(this, this);
+		hns::safety::PrintSafeModeWarning();
+		loading = false;
+		return true;
+	}
+
 	if (!hooks::Initialize(error, maxlen))
 	{
 		return false;
@@ -55,7 +70,6 @@ bool HNSPlugin::Load(PluginId id, ISmmAPI *ismm, char *error, size_t maxlen, boo
 
 	ismm->AddListener(this, this);
 
-	hns::config::Load();
 	hns::cvars::DisableReplication();
 	hns::cvars::ApplyAll();
 	hns::commands::Init();
@@ -73,13 +87,45 @@ bool HNSPlugin::Load(PluginId id, ISmmAPI *ismm, char *error, size_t maxlen, boo
 	return true;
 }
 
+// Undo everything Load did except the convars and gameconfig, so the plugin stays loaded but inert (safe mode).
+void HNSPlugin::SwitchOff()
+{
+	if (this->switchedOff)
+	{
+		return;
+	}
+	this->switchedOff = true;
+	hns::cvars::EnableReplication();
+	for (i32 i = 0; i < MAX_PLAYERS; i++)
+	{
+		HNSPlayer *player = g_pHNSPlayerManager->ToPlayer(CPlayerSlot(i));
+		if (player && player->movement)
+		{
+			player->movement->Cleanup();
+		}
+	}
+	hooks::Cleanup();
+	RemoveAllTimers();
+	// The cvar refs stay until Unload: hns_status and friends still read them.
+}
+
 bool HNSPlugin::Unload(char *error, size_t maxlen)
 {
 	this->unloading = true;
-	hns::cvars::EnableReplication();
-	for (i32 i = 0; i < MAXPLAYERS + 1; i++)
+	hns::crashlog::Uninstall();
+	hns::safety::OnUnload();
+	if (hns::safety::IsSafeMode())
 	{
-		HNSPlayer *player = g_pHNSPlayerManager->ToPlayer((u32)i);
+		// Either nothing was hooked (breaker) or SwitchOff already undid it (self-test).
+		hns::cvars::Cleanup();
+		utils::Cleanup();
+		ConVar_Unregister();
+		return true;
+	}
+	hns::cvars::EnableReplication();
+	for (i32 i = 0; i < MAX_PLAYERS; i++)
+	{
+		HNSPlayer *player = g_pHNSPlayerManager->ToPlayer(CPlayerSlot(i));
 		if (player && player->movement)
 		{
 			player->movement->Cleanup();
@@ -103,6 +149,20 @@ void HNSPlugin::OnLevelInit(char const *pMapName, char const *pMapEntities, char
 							bool background)
 {
 	m_sCurrentMap = pMapName;
+	if (!hns::safety::IsSafeMode())
+	{
+		char reason[256];
+		if (!hns::safety::RunSelfTest(reason, sizeof(reason)))
+		{
+			// Switch everything off now, before a player joins and the broken engine calls run.
+			this->SwitchOff();
+		}
+	}
+	if (hns::safety::IsSafeMode())
+	{
+		hns::safety::PrintSafeModeWarning();
+		return;
+	}
 	hns::gameplay::OnMapStart();
 }
 
@@ -116,7 +176,3 @@ bool HNSPlugin::Unpause(char *error, size_t maxlen)
 	return true;
 }
 
-CGameEntitySystem *GameEntitySystem()
-{
-	return interfaces::pGameResourceServiceServer->GetGameEntitySystem();
-}

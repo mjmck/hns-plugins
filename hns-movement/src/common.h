@@ -9,9 +9,10 @@
 
 #include "entity2/entitysystem.h"
 #include "tier0/dbg.h"
+#include "shareddefs.h"
+#include "tier0/icvar.h"
+#include "tier0/splitstring.h"
 #include "utils/logging.h"
-
-#define MAXPLAYERS 64
 
 #define ENGINE_FIXED_TICK_INTERVAL 0.015625f
 #define ENGINE_FIXED_TICK_RATE     (1.0f / ENGINE_FIXED_TICK_INTERVAL)
@@ -46,17 +47,18 @@ typedef uint64 u64;
 typedef float f32;
 typedef double f64;
 
-#define CS_TEAM_NONE      0
-#define CS_TEAM_SPECTATOR 1
-#define CS_TEAM_T         2
-#define CS_TEAM_CT        3
-
 // Enable water fix.
 #define WATER_FIX
 
 // Common macro for service event listeners in different parts of the project.
-#define CALL_FORWARD(listeners, func, ...)                FOR_EACH_VEC(listeners, i) listeners[i]->func(__VA_ARGS__);
-#define CALL_FORWARD_BOOL(retValue, listeners, func, ...) FOR_EACH_VEC(listeners, i) retValue &= listeners[i]->func(__VA_ARGS__)
+#define CALL_FORWARD(listeners, func, ...) \
+	for (size_t i = 0; i < (listeners).size(); i++) \
+		(listeners)[i]->func(__VA_ARGS__);
+#define CALL_FORWARD_BOOL(retValue, listeners, func, ...) \
+	for (size_t i = 0; i < (listeners).size(); i++) \
+	{ \
+		retValue &= (listeners)[i]->func(__VA_ARGS__); \
+	}
 
 // str*cmp considered harmful.
 //  Macros to make sure you don't mess up checking if strings are equal.

@@ -90,13 +90,13 @@ void HNSPlayer::OnPhysicsSimulatePost()
 	this->movement->OnPhysicsSimulatePost();
 }
 
-void HNSPlayer::OnSetupMove(PlayerCommand *pc)
+void HNSPlayer::OnSetupMove(CUserCmd *pc)
 {
 	VPROF_BUDGET(__func__, "HNS");
 	this->movement->OnSetupMove(pc);
 }
 
-void HNSPlayer::OnProcessUsercmds(PlayerCommand *cmds, int numcmds)
+void HNSPlayer::OnProcessUsercmds(CUserCmd *cmds, int numcmds)
 {
 	hns::hud::OnProcessUsercmds(this, cmds, numcmds);
 	hns::weapons::RemapKnifeAttack(this, cmds, numcmds);
@@ -291,7 +291,3 @@ HNSPlayer *HNSPlayerManager::ToPlayer(CPlayerUserId userID)
 	return static_cast<HNSPlayer *>(MovementPlayerManager::ToPlayer(userID));
 }
 
-HNSPlayer *HNSPlayerManager::ToPlayer(u32 index)
-{
-	return static_cast<HNSPlayer *>(MovementPlayerManager::players[index]);
-}

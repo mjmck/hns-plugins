@@ -40,7 +40,6 @@ def configure_main(sdk_target, sdk, cxx, protoc_builder):
       os.path.join(builder.sourcePath, 'hl2sdk-cs2'),
       os.path.join(builder.sourcePath, 'hl2sdk-cs2', 'public', 'entity2'),
       os.path.join(builder.sourcePath, 'hl2sdk-cs2', 'game', 'shared'),
-      os.path.join(builder.sourcePath, 'hl2sdk-cs2', 'game', 'server'),
   ]
 
   binary.custom = [protoc_builder]
@@ -49,7 +48,7 @@ def configure_main(sdk_target, sdk, cxx, protoc_builder):
     os.path.join(sdk['path'], 'entity2', 'entityidentity.cpp'),
     os.path.join(sdk['path'], 'entity2', 'entitysystem.cpp'),
     os.path.join(sdk['path'], 'entity2', 'entitykeyvalues.cpp'),
-    os.path.join(sdk['path'], 'tier1', 'keyvalues3.cpp'),
+    os.path.join(sdk['path'], 'tier0_perproject', 'keyvalues3.cpp'),
 
     os.path.join(builder.sourcePath, 'src', 'hns_plugin.cpp'),
 
@@ -77,6 +76,10 @@ def configure_main(sdk_target, sdk, cxx, protoc_builder):
     os.path.join(builder.sourcePath, 'src', 'hns', 'hns_compat.cpp'),
     os.path.join(builder.sourcePath, 'src', 'hns', 'hns_hud.cpp'),
     os.path.join(builder.sourcePath, 'src', 'hns', 'hns_joinsound.cpp'),
+    os.path.join(builder.sourcePath, 'src', 'hns', 'hns_eventsounds.cpp'),
+    os.path.join(builder.sourcePath, 'src', 'hns', 'hns_safety.cpp'),
+    os.path.join(builder.sourcePath, 'src', 'hns', 'hns_netmsg.cpp'),
+    os.path.join(builder.sourcePath, 'src', 'hns', 'hns_crashlog.cpp'),
     os.path.join(builder.sourcePath, 'src', 'jumpstats', 'js_jumpstats.cpp'),
     os.path.join(builder.sourcePath, 'src', 'jumpstats', 'js_validate.cpp'),
     os.path.join(builder.sourcePath, 'src', 'jumpstats', 'js_block.cpp'),

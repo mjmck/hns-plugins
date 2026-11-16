@@ -28,19 +28,19 @@ namespace hns::weapons
 	static_global u32 understabs {};
 	static_global u32 blockedTeamDamage {};
 	// Understab: height (origin z) of the ground each player last stood on, refreshed every frame while they are on it.
-	static_global f32 lastGroundZ[MAXPLAYERS + 1] {};
-	static_global bool hasGroundZ[MAXPLAYERS + 1] {};
+	static_global f32 lastGroundZ[MAX_PLAYERS + 1] {};
+	static_global bool hasGroundZ[MAX_PLAYERS + 1] {};
 	// The ground each player last stood on was a CT's head. A T standing on a CT can be stabbed by any CT.
-	static_global bool lastGroundOnCT[MAXPLAYERS + 1] {};
+	static_global bool lastGroundOnCT[MAX_PLAYERS + 1] {};
 	// Knife cooldown: a stabbed T takes no knife damage until this server time.
-	static_global f32 stabImmuneUntil[MAXPLAYERS + 1] {};
-	static_global bool stabTinted[MAXPLAYERS + 1] {};
-	static_global Color stabOriginalColor[MAXPLAYERS + 1];
+	static_global f32 stabImmuneUntil[MAX_PLAYERS + 1] {};
+	static_global bool stabTinted[MAX_PLAYERS + 1] {};
+	static_global Color stabOriginalColor[MAX_PLAYERS + 1];
 	static_function void UpdateStabTints();
 	// Last tick a "use weapon_knife" was sent to each slot, so an empty-handed player is not spammed.
-	static_global i32 lastEquipTick[MAXPLAYERS + 1] {};
+	static_global i32 lastEquipTick[MAX_PLAYERS + 1] {};
 	// Tick at which a spawned player's grenades should be checked. 0 = nothing pending.
-	static_global i32 pendingSpawnItems[MAXPLAYERS + 1] {};
+	static_global i32 pendingSpawnItems[MAX_PLAYERS + 1] {};
 	static_global i32 giveNamedItemOffset = -1;
 
 	enum class WeaponKind
@@ -212,7 +212,7 @@ namespace hns::weapons
 		return buttons;
 	}
 
-	void RemapKnifeAttack(HNSPlayer *player, PlayerCommand *cmds, int numcmds)
+	void RemapKnifeAttack(HNSPlayer *player, CUserCmd *cmds, int numcmds)
 	{
 		if (!settings.knifeAttackIsStab || !cmds || numcmds <= 0)
 		{
@@ -231,7 +231,7 @@ namespace hns::weapons
 		}
 		for (i32 i = 0; i < numcmds; i++)
 		{
-			PlayerCommand &cmd = cmds[i];
+			CUserCmd &cmd = cmds[i];
 			CBaseUserCmdPB *base = cmd.mutable_base();
 			if (base->has_buttons_pb())
 			{
@@ -262,7 +262,7 @@ namespace hns::weapons
 
 	void OnPlayerSpawn(i32 slot)
 	{
-		if (slot >= 0 && slot <= MAXPLAYERS)
+		if (slot >= 0 && slot <= MAX_PLAYERS)
 		{
 			// 4 ticks: the game hands out the default loadout right after the spawn event.
 			pendingSpawnItems[slot] = g_pKZUtils->GetServerGlobals()->tickcount + 4;
@@ -333,7 +333,7 @@ namespace hns::weapons
 	// Remember where every player last stood, so a T who jumps keeps the height of the block they jumped from.
 	static_function void UpdateGroundHeights()
 	{
-		for (i32 i = 0; i < MAXPLAYERS; i++)
+		for (i32 i = 0; i < MAX_PLAYERS; i++)
 		{
 			HNSPlayer *player = g_pHNSPlayerManager->ToPlayer(CPlayerSlot(i));
 			CCSPlayerPawn *pawn = player ? player->GetPlayerPawn() : nullptr;
@@ -374,7 +374,7 @@ namespace hns::weapons
 		{
 			return origin.z;
 		}
-		if (slot >= 0 && slot <= MAXPLAYERS && hasGroundZ[slot])
+		if (slot >= 0 && slot <= MAX_PLAYERS && hasGroundZ[slot])
 		{
 			return lastGroundZ[slot];
 		}
@@ -395,7 +395,7 @@ namespace hns::weapons
 		{
 			return floorZ;
 		}
-		if (slot >= 0 && slot <= MAXPLAYERS && hasGroundZ[slot])
+		if (slot >= 0 && slot <= MAX_PLAYERS && hasGroundZ[slot])
 		{
 			return lastGroundZ[slot];
 		}
@@ -414,7 +414,7 @@ namespace hns::weapons
 		UpdateGroundHeights();
 		{
 			i32 now = g_pKZUtils->GetServerGlobals()->tickcount;
-			for (i32 i = 0; i < MAXPLAYERS; i++)
+			for (i32 i = 0; i < MAX_PLAYERS; i++)
 			{
 				if (pendingSpawnItems[i] == 0 || now < pendingSpawnItems[i])
 				{
@@ -433,7 +433,7 @@ namespace hns::weapons
 			return;
 		}
 		i32 tick = g_pKZUtils->GetServerGlobals()->tickcount;
-		for (i32 i = 0; i < MAXPLAYERS; i++)
+		for (i32 i = 0; i < MAX_PLAYERS; i++)
 		{
 			HNSPlayer *player = g_pHNSPlayerManager->ToPlayer(CPlayerSlot(i));
 			if (!player || !player->IsConnectedController() || !player->IsAlive())
@@ -489,7 +489,7 @@ namespace hns::weapons
 		CBasePlayerController *victimController = utils::GetController(victim);
 		i32 slot = victimController ? victimController->m_pEntity->m_EHandle.GetEntryIndex() - 1 : -1;
 		f32 now = g_pKZUtils->GetServerGlobals()->curtime;
-		if (settings.knifeCooldown > 0.0f && slot >= 0 && slot <= MAXPLAYERS)
+		if (settings.knifeCooldown > 0.0f && slot >= 0 && slot <= MAX_PLAYERS)
 		{
 			if (now < stabImmuneUntil[slot])
 			{
@@ -501,7 +501,7 @@ namespace hns::weapons
 		// Understab: the T is standing (or last stood) on something more than hns_understab_height above the floor the CT
 		// is on or above. No damage, no cooldown.
 		// Exception: a T standing on (or who last stood on) a CT's head can be stabbed by any CT.
-		bool victimOnCT = IsOnGround(victim) ? IsStandingOnCT(victim) : (slot >= 0 && slot <= MAXPLAYERS && hasGroundZ[slot] && lastGroundOnCT[slot]);
+		bool victimOnCT = IsOnGround(victim) ? IsStandingOnCT(victim) : (slot >= 0 && slot <= MAX_PLAYERS && hasGroundZ[slot] && lastGroundOnCT[slot]);
 		// Ladders: no height check when either player is on a ladder.
 		bool onLadder = static_cast<CCSPlayerPawn *>(victim)->m_MoveType() == MOVETYPE_LADDER || attackerPawn->m_MoveType() == MOVETYPE_LADDER;
 		if (settings.understab && !victimOnCT && !onLadder)
@@ -524,7 +524,7 @@ namespace hns::weapons
 				return true;
 			}
 		}
-		if (settings.knifeCooldown > 0.0f && slot >= 0 && slot <= MAXPLAYERS)
+		if (settings.knifeCooldown > 0.0f && slot >= 0 && slot <= MAX_PLAYERS)
 		{
 			stabImmuneUntil[slot] = now + settings.knifeCooldown;
 		}
@@ -534,7 +534,7 @@ namespace hns::weapons
 			damageOverrides++;
 		}
 		// Red tint while immune, if the stab does not kill (same as ChaseMod).
-		if (settings.knifeCooldown > 0.0f && slot >= 0 && slot <= MAXPLAYERS && victim->m_iHealth() - info->m_flDamage() > 0.0f)
+		if (settings.knifeCooldown > 0.0f && slot >= 0 && slot <= MAX_PLAYERS && victim->m_iHealth() - info->m_flDamage() > 0.0f)
 		{
 			CBaseModelEntity *model = static_cast<CBaseModelEntity *>(victim);
 			if (!stabTinted[slot])
@@ -551,7 +551,7 @@ namespace hns::weapons
 	static_function void UpdateStabTints()
 	{
 		f32 now = g_pKZUtils->GetServerGlobals()->curtime;
-		for (i32 i = 0; i < MAXPLAYERS; i++)
+		for (i32 i = 0; i < MAX_PLAYERS; i++)
 		{
 			if (!stabTinted[i] || now < stabImmuneUntil[i])
 			{
@@ -569,7 +569,7 @@ namespace hns::weapons
 
 	void ResetStabCooldowns()
 	{
-		for (i32 i = 0; i <= MAXPLAYERS; i++)
+		for (i32 i = 0; i <= MAX_PLAYERS; i++)
 		{
 			stabImmuneUntil[i] = 0.0f;
 			stabTinted[i] = false;
@@ -602,7 +602,7 @@ namespace hns::weapons
 					   damageOverrides, blockedStabs, understabs);
 		META_CONPRINTF("understab %d, understab_height %g, no_team_damage %d (team damage blocked %u)\n", settings.understab, settings.understabHeight,
 					   settings.noTeamDamage, blockedTeamDamage);
-		for (i32 i = 0; i < MAXPLAYERS; i++)
+		for (i32 i = 0; i < MAX_PLAYERS; i++)
 		{
 			HNSPlayer *player = g_pHNSPlayerManager->ToPlayer(CPlayerSlot(i));
 			if (!player || !player->IsConnectedController())

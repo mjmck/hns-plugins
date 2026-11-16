@@ -7,6 +7,8 @@
 #include "hns_compat.h"
 #include "hns_hud.h"
 #include "hns_joinsound.h"
+#include "hns_eventsounds.h"
+#include "hns_safety.h"
 #include "jumpstats/js_jumpstats.h"
 #include "utils/utils.h"
 
@@ -24,6 +26,11 @@ static_function bool FromServer(const CCommandContext &context)
 
 CON_COMMAND_F(hns_reload, "Reload cfg/hns-movement/hns-movement.cfg (and join-sounds.cfg) and push the movement cvars to every client.", FCVAR_NONE)
 {
+	if (hns::safety::IsSafeMode())
+	{
+		META_CONPRINTF("hns-movement is in safe mode (switched off). See hns_safety_status.\n");
+		return;
+	}
 	if (!FromServer(context))
 	{
 		return;
@@ -49,6 +56,8 @@ CON_COMMAND_F(hns_status, "Print the enforced movement cvars and the plugin sett
 	hns::weapons::PrintDebug();
 	hns::compat::PrintStatus();
 	hns::joinsound::PrintStatus();
+	hns::eventsounds::PrintStatus();
+	hns::safety::PrintStatus();
 	hns::jumpstats::PrintStatus();
 }
 
@@ -69,7 +78,7 @@ CON_COMMAND_F(hns_perf_stats, "Print per-player jump/perf counts since connect."
 		return;
 	}
 	META_CONPRINTF("%-4s %-24s %8s %8s %7s %10s %10s\n", "slot", "name", "jumps", "perfs", "perf%", "lastspeed", "lastgnd");
-	for (i32 i = 0; i < MAXPLAYERS; i++)
+	for (i32 i = 0; i < MAX_PLAYERS; i++)
 	{
 		HNSPlayer *player = g_pHNSPlayerManager->ToPlayer(CPlayerSlot(i));
 		if (!player || !player->IsConnectedController())

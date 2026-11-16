@@ -1,6 +1,7 @@
+#pragma once
 #include "common.h"
 #include "steam/isteamuser.h"
-#include "sdk/serversideclient.h"
+#include "engine2/serversideclient.h"
 #include "sdk/datatypes.h"
 #include "sdk/services.h"
 #include "sdk/entity/ccsplayercontroller.h"
@@ -23,9 +24,11 @@ public:
 	virtual void Reset()
 	{
 		unauthenticatedSteamID = k_steamIDNil;
+		authorizedSteamID = k_steamIDNil;
 		hasPrime = false;
 		authPending = false;
 		authAuthorized = false;
+		sessionID = 0;
 	}
 
 	virtual CCSPlayerController *GetController();
@@ -50,9 +53,21 @@ public:
 		return index - 1;
 	}
 
-	bool IsAuthenticated()
+	bool IsEngineAuthenticated()
 	{
 		return IsConnected() && !IsFakeClient() && interfaces::pEngine->IsClientFullyAuthenticated(GetPlayerSlot());
+	}
+
+	// An authorized player keeps that identity while away and through a reconnect into the held slot.
+	bool IsAuthenticated()
+	{
+		return authAuthorized && (IsAway() || IsConnected());
+	}
+
+	// The client left, but the pawn and the player's state persist for a reconnect.
+	virtual bool IsAway()
+	{
+		return false;
 	}
 
 	bool IsConnected()
@@ -60,9 +75,10 @@ public:
 		return GetClient() ? GetClient()->IsConnected() : false;
 	}
 
+	// Active clients still lose their controller for a moment during a map change.
 	bool IsInGame()
 	{
-		return GetClient() ? GetClient()->IsInGame() : false;
+		return GetClient() && GetClient()->IsActive() && GetController();
 	}
 
 	bool IsFakeClient()
@@ -77,13 +93,25 @@ public:
 
 	void Kick(const char *internalReason = "", ENetworkDisconnectionReason reason = NETWORK_DISCONNECT_KICKED);
 
-	CUtlString sanitizedName;
+	std::string sanitizedName;
+
+	// Takes the name from the client. An away player has no client and keeps the last name it had.
+	void RefreshName()
+	{
+		if (GetClient())
+		{
+			sanitizedName = utils::Trim(GetClient()->GetClientName());
+		}
+		else if (!IsAway())
+		{
+			sanitizedName = "<blank>";
+		}
+	}
 
 	const char *GetName()
 	{
-		sanitizedName = GetClient() ? GetClient()->GetClientName() : "<blank>";
-		sanitizedName.Trim();
-		return sanitizedName.Get();
+		RefreshName();
+		return sanitizedName.c_str();
 	}
 
 	void SetName(const char *name);
@@ -97,17 +125,11 @@ public:
 
 	const CSteamID GetSteamId(bool validated = true)
 	{
-		static_persist const CSteamID invalidId = k_steamIDNil;
-		if (validated && !IsAuthenticated())
+		if (IsAuthenticated())
 		{
-			return invalidId;
+			return authorizedSteamID;
 		}
-		CServerSideClient *client = GetClient();
-		if (client && IsAuthenticated())
-		{
-			return client->GetClientSteamID();
-		}
-		return unauthenticatedSteamID;
+		return validated ? k_steamIDNil : unauthenticatedSteamID;
 	}
 
 	u64 GetSteamId64(bool validated = true)
@@ -145,9 +167,74 @@ public:
 	bool hasPrime {};
 	bool authPending {};    // True if in auth queue waiting for validation
 	bool authAuthorized {}; // True if authorization completed
+	f64 authQueuedTime {};  // HNS: when the player entered the auth queue (Plat_FloatTime), for the queue time limit
+	CSteamID authorizedSteamID = k_steamIDNil;
+	// Identifies one stay on the server, which survives a reconnect into the held slot.
+	u32 sessionID {};
 
 private:
 	CSteamID unauthenticatedSteamID = k_steamIDNil;
+};
+
+// Iterates every player slot, or only the slots whose player is in game.
+template<typename T>
+class PlayerSlotRange
+{
+public:
+	class Iterator
+	{
+	public:
+		Iterator(Player *const *entry, Player *const *last, bool inGameOnly) : entry(entry), last(last), inGameOnly(inGameOnly)
+		{
+			this->SkipFiltered();
+		}
+
+		T *operator*() const
+		{
+			return static_cast<T *>(*entry);
+		}
+
+		Iterator &operator++()
+		{
+			entry++;
+			this->SkipFiltered();
+			return *this;
+		}
+
+		bool operator!=(const Iterator &other) const
+		{
+			return entry != other.entry;
+		}
+
+	private:
+		void SkipFiltered()
+		{
+			while (inGameOnly && entry != last && !(*entry)->IsInGame())
+			{
+				entry++;
+			}
+		}
+
+		Player *const *entry;
+		Player *const *last;
+		bool inGameOnly;
+	};
+
+	PlayerSlotRange(Player *const *players, bool inGameOnly) : players(players), inGameOnly(inGameOnly) {}
+
+	Iterator begin() const
+	{
+		return Iterator(players, players + MAX_PLAYERS, inGameOnly);
+	}
+
+	Iterator end() const
+	{
+		return Iterator(players + MAX_PLAYERS, players + MAX_PLAYERS, inGameOnly);
+	}
+
+private:
+	Player *const *players;
+	bool inGameOnly;
 };
 
 class PlayerManager
@@ -155,19 +242,19 @@ class PlayerManager
 public:
 	PlayerManager()
 	{
-		for (int i = 0; i < MAXPLAYERS + 1; i++)
+		for (i32 i = 0; i < MAX_PLAYERS; i++)
 		{
 			delete players[i];
-			players[i] = new Player(i);
+			players[i] = new Player(i + 1);
 			players[i]->Reset();
 		}
 	}
 
 	virtual ~PlayerManager()
 	{
-		for (int i = 0; i < MAXPLAYERS + 1; i++)
+		for (Player *player : players)
 		{
-			delete players[i];
+			delete player;
 		}
 	}
 
@@ -179,12 +266,23 @@ public:
 	Player *ToPlayer(CEntityIndex entIndex);
 	Player *ToPlayer(CPlayerUserId userID);
 	Player *SteamIdToPlayer(u64 steamID, bool validated = true);
+	Player *SessionToPlayer(u32 sessionID);
+
+	PlayerSlotRange<Player> GetAllSlots()
+	{
+		return PlayerSlotRange<Player>(players, false);
+	}
+
+	PlayerSlotRange<Player> GetInGamePlayers()
+	{
+		return PlayerSlotRange<Player>(players, true);
+	}
 
 	virtual void ResetPlayers()
 	{
-		for (int i = 0; i < MAXPLAYERS + 1; i++)
+		for (Player *player : players)
 		{
-			players[i]->Reset();
+			player->Reset();
 		}
 	}
 
@@ -236,11 +334,12 @@ public:
 
 private:
 	bool callbackRegistered {};
+	u32 nextSessionID = 1;
 	std::vector<CPlayerSlot> authQueue; // Queue of players pending auth validation
 
 public:
-	// Zero-initialized: PlayerManager's constructor deletes every slot before allocating.
-	Player *players[MAXPLAYERS + 1] {};
+	// Indexed by player slot, and zero-initialized because PlayerManager's constructor deletes every slot before allocating.
+	Player *players[MAX_PLAYERS] {};
 };
 
 extern PlayerManager *g_pPlayerManager;
