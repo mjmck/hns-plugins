@@ -8,6 +8,7 @@
 #include "hns_hud.h"
 #include "hns_joinsound.h"
 #include "hns_eventsounds.h"
+#include "hns_safety.h"
 #include "jumpstats/js_jumpstats.h"
 #include "utils/utils.h"
 
@@ -51,6 +52,7 @@ CON_COMMAND_F(hns_status, "Print the enforced movement cvars and the plugin sett
 	hns::compat::PrintStatus();
 	hns::joinsound::PrintStatus();
 	hns::eventsounds::PrintStatus();
+	hns::safety::PrintStatus();
 	hns::jumpstats::PrintStatus();
 }
 

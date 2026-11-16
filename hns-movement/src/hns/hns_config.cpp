@@ -54,6 +54,8 @@ namespace hns::config
 			{"hns_join_sound",          SettingDef::Bool,  &settings.joinSound,            "1 = play a server-wide sound when a player listed in join-sounds.cfg joins."},
 			{"hns_join_sound_delay",    SettingDef::Float, &settings.joinSoundDelay,       "Seconds after the listed player is in the server and Steam-validated before their join sound plays."},
 			{"hns_join_sound_cooldown", SettingDef::Float, &settings.joinSoundCooldown,    "Seconds before the same player's join sound can play again (stops replays on map change). 0 = every connection."},
+			{"hns_safety",              SettingDef::Bool,  &settings.safety,               "1 = crash breaker: if the server dies on a new CS2 version before it is confirmed, start switched off (safe mode) until hns_safety_reset."},
+			{"hns_safety_confirm_seconds", SettingDef::Float, &settings.safetyConfirmSeconds, "Seconds a player must be in the game on a new CS2 version before it counts as working."},
 			{"hns_event_sounds",        SettingDef::Bool,  &settings.eventSounds,          "1 = announcer sounds for the seeker countdown, last man standing and double kills (names in event-sounds.cfg)."},
 			{"hns_js",                  SettingDef::Bool,  &settings.jumpstats,            "1 = CS2KZ jumpstats, shown only to the jumper and their spectators (tiers and sounds in jumpstats.cfg). !js / !jssound toggle."},
 			{"hns_js_min_tier",         SettingDef::Int,   &settings.jsMinTier,            "Lowest tier reported to the jumper: 0 off, 1 meh, 2 impressive, 3 perfect, 4 godlike, 5 ownage, 6 wrecker."},

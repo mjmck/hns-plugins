@@ -77,6 +77,11 @@ namespace hns::config
 		// ---- Event sounds (hns_eventsounds.h, sound names in cfg/hns-movement/event-sounds.cfg) ----
 		// Seeker countdown 3-2-1, last man standing and double kill, played to everyone.
 		bool eventSounds = true;
+		// ---- CS2 update safety (hns_safety.h) ----
+		// Crash breaker: if the server dies before a new CS2 version is confirmed, the next start is in safe mode.
+		bool safety = true;
+		// Seconds a human player must be in the game on a new CS2 version before it counts as working.
+		f32 safetyConfirmSeconds = 180.0f;
 		// ---- Jumpstats (src/jumpstats, tiers and sounds in cfg/hns-movement/jumpstats.cfg) ----
 		bool jumpstats = true;
 		// Tiers: 0 none (off), 1 meh, 2 impressive, 3 perfect, 4 godlike, 5 ownage, 6 wrecker. Same defaults as CS2KZ.

@@ -1,3 +1,4 @@
+#include "hns/hns_safety.h"
 #include "usermessages.pb.h"
 #include "public/networksystem/inetworkmessages.h"
 #include "engine2/igameeventsystem.h"
@@ -256,6 +257,11 @@ bool utils::CFormat(char *buffer, u64 buffer_size, const char *text)
 void utils::ClientPrintFilter(IRecipientFilter *filter, int msg_dest, const char *msg_name, const char *param1, const char *param2,
 							  const char *param3, const char *param4)
 {
+	// HNS: never send through a network message table the self-test rejected.
+	if (hns::safety::IsSafeMode())
+	{
+		return;
+	}
 	NetMessageInfo_t *netmsg = g_pNetworkMessages->FindNetworkMessagePartial("TextMsg");
 	auto msg = netmsg->AllocateMessage()->ToPB<CUserMessageTextMsg>();
 	msg->set_dest(msg_dest);
@@ -286,6 +292,11 @@ void utils::SayChat(CBaseEntity *entity, const char *format, ...)
 		Warning("utils::SayChat did not have enough space to print: %s\n", buffer);
 	}
 
+	// HNS: never send through a network message table the self-test rejected.
+	if (hns::safety::IsSafeMode())
+	{
+		return;
+	}
 	NetMessageInfo_t *netmsg = g_pNetworkMessages->FindNetworkMessagePartial("SayText2");
 	auto msg = netmsg->AllocateMessage()->ToPB<CUserMessageSayText2>();
 	msg->set_entityindex(entity->entindex());

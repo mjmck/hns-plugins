@@ -27,6 +27,7 @@
 #include "hns/hns_weapons.h"
 #include "hns/hns_joinsound.h"
 #include "hns/hns_eventsounds.h"
+#include "hns/hns_safety.h"
 #include "jumpstats/js_jumpstats.h"
 #include "sdk/takedamageinfo.h"
 #include "sdk/usercmd.h"
@@ -78,6 +79,7 @@ static KHook::Return<void> GameFramePre(ISource2Server *pThis, bool simulating, 
 	VPROF_BUDGET(__func__, "HNS");
 	g_HNSPlugin.serverGlobals = *(g_pKZUtils->GetGlobals());
 	g_pPlayerManager->PerformAuthChecks();
+	hns::safety::OnGameFrame();
 	hns::gameplay::OnGameFrame();
 	hns::weapons::OnGameFrame();
 	hns::hud::OnGameFrame();

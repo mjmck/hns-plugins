@@ -16,6 +16,7 @@
 #include "hns/hns_commands.h"
 #include "hns/hns_gameplay.h"
 #include "hns/hns_compat.h"
+#include "hns/hns_safety.h"
 
 #include "tier0/memdbgon.h"
 
@@ -46,6 +47,19 @@ bool HNSPlugin::Load(PluginId id, ISmmAPI *ismm, char *error, size_t maxlen, boo
 		return false;
 	}
 
+	hns::config::Load();
+
+	// CS2 update safety net: if the engine looks changed, or the server died last time on this CS2 version, stay loaded
+	// but switched off instead of risking a crash or a freeze.
+	char reason[256];
+	if (!hns::safety::CheckBeforeHooks(reason, sizeof(reason)))
+	{
+		ismm->AddListener(this, this);
+		hns::safety::PrintSafeModeWarning();
+		loading = false;
+		return true;
+	}
+
 	if (!hooks::Initialize(error, maxlen))
 	{
 		return false;
@@ -53,7 +67,6 @@ bool HNSPlugin::Load(PluginId id, ISmmAPI *ismm, char *error, size_t maxlen, boo
 
 	ismm->AddListener(this, this);
 
-	hns::config::Load();
 	hns::cvars::DisableReplication();
 	hns::cvars::ApplyAll();
 	hns::commands::Init();
@@ -74,6 +87,13 @@ bool HNSPlugin::Load(PluginId id, ISmmAPI *ismm, char *error, size_t maxlen, boo
 bool HNSPlugin::Unload(char *error, size_t maxlen)
 {
 	this->unloading = true;
+	hns::safety::OnUnload();
+	if (hns::safety::IsSafeMode())
+	{
+		utils::Cleanup();
+		ConVar_Unregister();
+		return true;
+	}
 	hns::cvars::EnableReplication();
 	for (i32 i = 0; i < MAX_PLAYERS; i++)
 	{
@@ -101,6 +121,11 @@ void HNSPlugin::OnLevelInit(char const *pMapName, char const *pMapEntities, char
 							bool background)
 {
 	m_sCurrentMap = pMapName;
+	if (hns::safety::IsSafeMode())
+	{
+		hns::safety::PrintSafeModeWarning();
+		return;
+	}
 	hns::gameplay::OnMapStart();
 }
 

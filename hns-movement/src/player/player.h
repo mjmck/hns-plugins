@@ -167,6 +167,7 @@ public:
 	bool hasPrime {};
 	bool authPending {};    // True if in auth queue waiting for validation
 	bool authAuthorized {}; // True if authorization completed
+	f64 authQueuedTime {};  // HNS: when the player entered the auth queue (Plat_FloatTime), for the queue time limit
 	CSteamID authorizedSteamID = k_steamIDNil;
 	// Identifies one stay on the server, which survives a reconnect into the held slot.
 	u32 sessionID {};

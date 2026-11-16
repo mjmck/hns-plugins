@@ -1,5 +1,8 @@
 #include "player.h"
 #include "utils/utils.h"
+
+// HNS: seconds a player may wait in the auth queue before it stops checking them.
+#define HNS_AUTH_QUEUE_TIMEOUT 120.0
 #include "engine2/inetworkgameserver.h"
 #include "engine2/inetworkserverservice.h"
 
@@ -239,6 +242,7 @@ void PlayerManager::AddToAuthQueue(CPlayerSlot slot)
 	}
 
 	player->authPending = true;
+	player->authQueuedTime = Plat_FloatTime();
 	this->authQueue.push_back(slot);
 }
 
@@ -311,6 +315,17 @@ void PlayerManager::PerformAuthChecks()
 		if (player->IsEngineAuthenticated())
 		{
 			this->AuthorizeClient(slot);
+			continue;
+		}
+
+		// HNS: give up on a player Steam never validates (Steam down, engine change) instead of checking them forever.
+		// They play normally; only Steam-ID features (join sounds) skip them.
+		if (Plat_FloatTime() - player->authQueuedTime > HNS_AUTH_QUEUE_TIMEOUT)
+		{
+			HNS_LOG_WARN(LogChannel::Player, "Player %s (slot %d) was not Steam-validated within %.0f seconds, giving up.\n", player->GetName(),
+						 slot.Get(), HNS_AUTH_QUEUE_TIMEOUT);
+			player->authPending = false;
+			this->RemoveFromAuthQueue(slot);
 		}
 	}
 }
