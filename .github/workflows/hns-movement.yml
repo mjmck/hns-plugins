@@ -1,0 +1,60 @@
+# Builds hns-movement for Linux in the Steam Runtime "sniper" SDK image (the same setup CS2KZ uses), so the .so runs on
+# the CS2 dedicated server. Every push that touches hns-movement/ builds it; the result is under the run's "Artifacts":
+#   hns-movement-linux  ->  addons/hns-movement/bin/linuxsteamrt64/hns-movement.so, gamedata, metamod .vdf, default cfgs
+# Run it by hand from the Actions tab with "Run workflow".
+name: hns-movement
+
+on:
+  push:
+    paths:
+      - "hns-movement/**"
+      - ".github/workflows/hns-movement.yml"
+      - ".gitmodules"
+  pull_request:
+    paths:
+      - "hns-movement/**"
+      - ".github/workflows/hns-movement.yml"
+      - ".gitmodules"
+  workflow_dispatch:
+
+jobs:
+  linux:
+    name: Linux (Steam Runtime sniper)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: hns-movement
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Only the two submodules the build needs, plus metamod's own (khook).
+      - name: Fetch submodules
+        working-directory: .
+        run: |
+          git submodule update --init hns-movement/hl2sdk-cs2 hns-movement/metamod-source
+          git -C hns-movement/metamod-source submodule update --init --recursive
+
+      - name: Build in Docker
+        run: |
+          mkdir -p build
+          docker build . --file Dockerfile --tag hns-movement-linux-builder
+          docker run --rm -v "$PWD/build:/app/build" hns-movement-linux-builder
+
+      - name: Check the plugin runs on the Steam Runtime
+        run: |
+          so=build/package/addons/hns-movement/bin/linuxsteamrt64/hns-movement.so
+          ls -la "$so"
+          echo "Highest symbol versions required (Steam Runtime sniper has GLIBC 2.31):"
+          objdump -T "$so" | grep -oE '(GLIBC|GLIBCXX|CXXABI)_[0-9.]+' | sort -Vu | tail -5
+          if objdump -T "$so" | grep -qE 'GLIBC_2\.(3[2-9]|[4-9][0-9])'; then
+            echo "::error::hns-movement.so needs a newer glibc than the Steam Runtime has"
+            exit 1
+          fi
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: hns-movement-linux
+          path: hns-movement/build/package
