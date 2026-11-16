@@ -26,6 +26,11 @@ static_function bool FromServer(const CCommandContext &context)
 
 CON_COMMAND_F(hns_reload, "Reload cfg/hns-movement/hns-movement.cfg (and join-sounds.cfg) and push the movement cvars to every client.", FCVAR_NONE)
 {
+	if (hns::safety::IsSafeMode())
+	{
+		META_CONPRINTF("hns-movement is in safe mode (switched off). See hns_safety_status.\n");
+		return;
+	}
 	if (!FromServer(context))
 	{
 		return;

@@ -8,7 +8,7 @@
 // freezes (16 Nov 2026: every player join froze the server until the watchdog killed it). Two checks keep the server
 // joinable when that happens:
 //
-// 1. Self-test at load. The network message layout that the 12 Nov update changed (the thing that froze the server) is
+// 1. Self-test at the first map start (the engine registers its network messages after plugins load). The layout that the 12 Nov update changed (the thing that froze the server) is
 //    checked with reads that cannot crash: the messages the plugin sends must be found by name and look valid.
 //
 // 2. Crash breaker, per CS2 server version. The first time the plugin runs on a CS2 version it has not run on before,
@@ -26,12 +26,16 @@ namespace hns::safety
 {
 #define HNS_RUNSTATE_PATH "cfg/hns-movement/.runstate"
 
-	// Called at the start of Load, after utils::Initialize. Returns true when the plugin may install its hooks.
-	// error/maxlen receive a short reason when it returns false (the plugin still loads, in safe mode).
+	// Called in Load, before the hooks. Returns false when the crash breaker tripped: the plugin then stays loaded in
+	// safe mode and must not install hooks. reason receives a short explanation.
 	bool CheckBeforeHooks(char *reason, size_t maxlen);
 
-	// True when Load decided not to install hooks.
+	// True when the plugin is switched off (breaker at load, or the self-test at map start failed).
 	bool IsSafeMode();
+
+	// At map start, before any player can join. Returns false (and switches to safe mode) if the network message table
+	// does not look like this build expects; the caller must then remove its hooks.
+	bool RunSelfTest(char *reason, size_t maxlen);
 
 	// From GameFramePre: counts time with a human in the game and marks this CS2 version good once it is long enough.
 	void OnGameFrame();

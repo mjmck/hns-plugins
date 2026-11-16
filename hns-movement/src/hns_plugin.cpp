@@ -84,12 +84,36 @@ bool HNSPlugin::Load(PluginId id, ISmmAPI *ismm, char *error, size_t maxlen, boo
 	return true;
 }
 
+// Undo everything Load did except the convars and gameconfig, so the plugin stays loaded but inert (safe mode).
+void HNSPlugin::SwitchOff()
+{
+	if (this->switchedOff)
+	{
+		return;
+	}
+	this->switchedOff = true;
+	hns::cvars::EnableReplication();
+	for (i32 i = 0; i < MAX_PLAYERS; i++)
+	{
+		HNSPlayer *player = g_pHNSPlayerManager->ToPlayer(CPlayerSlot(i));
+		if (player && player->movement)
+		{
+			player->movement->Cleanup();
+		}
+	}
+	hooks::Cleanup();
+	RemoveAllTimers();
+	// The cvar refs stay until Unload: hns_status and friends still read them.
+}
+
 bool HNSPlugin::Unload(char *error, size_t maxlen)
 {
 	this->unloading = true;
 	hns::safety::OnUnload();
 	if (hns::safety::IsSafeMode())
 	{
+		// Either nothing was hooked (breaker) or SwitchOff already undid it (self-test).
+		hns::cvars::Cleanup();
 		utils::Cleanup();
 		ConVar_Unregister();
 		return true;
@@ -121,6 +145,15 @@ void HNSPlugin::OnLevelInit(char const *pMapName, char const *pMapEntities, char
 							bool background)
 {
 	m_sCurrentMap = pMapName;
+	if (!hns::safety::IsSafeMode())
+	{
+		char reason[256];
+		if (!hns::safety::RunSelfTest(reason, sizeof(reason)))
+		{
+			// Switch everything off now, before a player joins and the broken engine calls run.
+			this->SwitchOff();
+		}
+	}
 	if (hns::safety::IsSafeMode())
 	{
 		hns::safety::PrintSafeModeWarning();

@@ -178,14 +178,6 @@ namespace hns::safety
 		reason[0] = '\0';
 		runningVersion = utils::GetServerVersion();
 
-		selfTestPassed = SelfTest(reason, maxlen);
-		if (!selfTestPassed)
-		{
-			safeMode = true;
-			safeModeReason = std::string("self-test failed: ") + reason;
-			return false;
-		}
-
 		if (!settings.safety)
 		{
 			probing = false;
@@ -222,6 +214,24 @@ namespace hns::safety
 	bool IsSafeMode()
 	{
 		return safeMode;
+	}
+
+	bool RunSelfTest(char *reason, size_t maxlen)
+	{
+		reason[0] = '\0';
+		if (selfTestPassed)
+		{
+			return true;
+		}
+		selfTestPassed = SelfTest(reason, maxlen);
+		if (!selfTestPassed)
+		{
+			safeMode = true;
+			safeModeReason = std::string("self-test failed: ") + reason;
+			// Not this build's fault to probe further; leave the breaker as it is.
+			probing = false;
+		}
+		return selfTestPassed;
 	}
 
 	void OnGameFrame()
@@ -284,7 +294,7 @@ namespace hns::safety
 	{
 		META_CONPRINTF("---- hns-movement safety ----\n");
 		META_CONPRINTF("CS2 server version %u\n", runningVersion);
-		META_CONPRINTF("self-test   %s\n", selfTestPassed ? "passed" : "FAILED");
+		META_CONPRINTF("self-test   %s\n", selfTestPassed ? "passed" : safeMode ? "FAILED" : "not run yet (runs at map start)");
 		META_CONPRINTF("breaker     %s\n", !settings.safety ? "off (hns_safety 0)" : probing ? "probing (not confirmed yet)" : "confirmed");
 		if (probing)
 		{
