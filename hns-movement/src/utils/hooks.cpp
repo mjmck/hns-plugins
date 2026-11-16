@@ -76,6 +76,7 @@ static KHook::Return<void> GameFramePre(ISource2Server *pThis, bool simulating, 
 {
 	VPROF_BUDGET(__func__, "HNS");
 	g_HNSPlugin.serverGlobals = *(g_pKZUtils->GetGlobals());
+	g_pPlayerManager->PerformAuthChecks();
 	hns::gameplay::OnGameFrame();
 	hns::weapons::OnGameFrame();
 	hns::hud::OnGameFrame();

@@ -124,8 +124,14 @@ void PlayerManager::OnClientPutInServer(CPlayerSlot slot, char const *pszName, i
 
 void PlayerManager::OnClientActive(CPlayerSlot slot, bool bLoadGame, const char *pszName, uint64 xuid)
 {
-	this->ToPlayer(slot)->SetUnauthenticatedSteamID(xuid);
-	this->ToPlayer(slot)->OnPlayerActive();
+	Player *player = this->ToPlayer(slot);
+	player->SetUnauthenticatedSteamID(xuid);
+	// Queue for Steam validation; PerformAuthChecks (every game frame) authorizes once the engine has validated the ticket.
+	if (!player->IsFakeClient() && !player->authAuthorized)
+	{
+		this->AddToAuthQueue(slot);
+	}
+	player->OnPlayerActive();
 }
 
 void PlayerManager::OnClientDisconnect(CPlayerSlot slot, ENetworkDisconnectionReason reason, const char *pszName, uint64 xuid,
