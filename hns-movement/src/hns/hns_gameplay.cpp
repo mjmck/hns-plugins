@@ -2,6 +2,7 @@
 #include "hns_player.h"
 #include "hns_config.h"
 #include "hns_weapons.h"
+#include "hns_eventsounds.h"
 #include "utils/utils.h"
 #include "sdk/gamerules.h"
 #include "sdk/services.h"
@@ -158,6 +159,7 @@ namespace hns::gameplay
 
 	void OnFireEvent(IGameEvent *event)
 	{
+		hns::eventsounds::OnFireEvent(event);
 		const char *name = event->GetName();
 		if (KZ_STREQI(name, "round_end"))
 		{
@@ -269,6 +271,7 @@ namespace hns::gameplay
 		{
 			lastCountdownShown = shown;
 			utils::PrintCentreAll("Seekers released in %i...", shown);
+			hns::eventsounds::OnFreezeCountdown(shown);
 		}
 	}
 

@@ -3,7 +3,11 @@
 // versions. Each wrapper below is a hidden local definition, so every caller
 // in the plugin (including prebuilt SDK archives) binds to it, and it forwards
 // to the oldest version of the real function.
-#if defined(__linux__) && defined(__x86_64__)
+#if defined(__linux__)
+#include <features.h>
+#endif
+// Only needed when the build host has a newer glibc than the Steam Runtime (2.31).
+#if defined(__linux__) && defined(__x86_64__) && (__GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ > 31))
 #define _LARGEFILE64_SOURCE 1
 #include <dlfcn.h>
 #include <pthread.h>

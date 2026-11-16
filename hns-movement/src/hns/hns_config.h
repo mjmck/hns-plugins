@@ -74,6 +74,9 @@ namespace hns::config
 		// Seconds before the same player's join sound can play again. Map changes reconnect everyone, so this stops the
 		// sound replaying on every map. 0 = every connection.
 		f32 joinSoundCooldown = 1800.0f;
+		// ---- Event sounds (hns_eventsounds.h, sound names in cfg/hns-movement/event-sounds.cfg) ----
+		// Seeker countdown 3-2-1, last man standing and double kill, played to everyone.
+		bool eventSounds = true;
 		// ---- Jumpstats (src/jumpstats, tiers and sounds in cfg/hns-movement/jumpstats.cfg) ----
 		bool jumpstats = true;
 		// Tiers: 0 none (off), 1 meh, 2 impressive, 3 perfect, 4 godlike, 5 ownage, 6 wrecker. Same defaults as CS2KZ.
