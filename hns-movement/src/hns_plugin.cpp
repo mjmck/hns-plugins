@@ -3,8 +3,8 @@
 #include "entity2/entitysystem.h"
 #include "steam/steam_gameserver.h"
 
-#include "sdk/cgameresourceserviceserver.h"
 #include "utils/utils.h"
+#include "utils/addresses.h"
 #include "utils/hooks.h"
 #include "utils/gameconfig.h"
 #include "utils/ctimer.h"
@@ -20,8 +20,6 @@
 #include "tier0/memdbgon.h"
 
 HNSPlugin g_HNSPlugin;
-// Used by Player::OnAuthorized (prime check) in the shared player layer.
-CSteamGameServerAPIContext g_steamAPI;
 
 PLUGIN_EXPOSE(HNSPlugin, g_HNSPlugin);
 
@@ -77,9 +75,9 @@ bool HNSPlugin::Unload(char *error, size_t maxlen)
 {
 	this->unloading = true;
 	hns::cvars::EnableReplication();
-	for (i32 i = 0; i < MAXPLAYERS + 1; i++)
+	for (i32 i = 0; i < MAX_PLAYERS; i++)
 	{
-		HNSPlayer *player = g_pHNSPlayerManager->ToPlayer((u32)i);
+		HNSPlayer *player = g_pHNSPlayerManager->ToPlayer(CPlayerSlot(i));
 		if (player && player->movement)
 		{
 			player->movement->Cleanup();
@@ -116,7 +114,3 @@ bool HNSPlugin::Unpause(char *error, size_t maxlen)
 	return true;
 }
 
-CGameEntitySystem *GameEntitySystem()
-{
-	return interfaces::pGameResourceServiceServer->GetGameEntitySystem();
-}

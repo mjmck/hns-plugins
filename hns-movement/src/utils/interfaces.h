@@ -4,17 +4,15 @@
 #include "sdk/datatypes.h"
 #include "playerslot.h"
 #include "vector.h"
-#include "igameeventsystem.h"
+#include "engine2/igameeventsystem.h"
+#include "engine2/isource2server.h"
+#include "engine2/ivengineserver2.h"
 
 class CGameConfig;
 class CTraceFilter;
 class CCSPlayerController;
-class CGameResourceService;
 class CSchemaSystem;
-class IVEngineServer2;
-class ISource2Server;
 class IGameEventManager2;
-class IGameEventSystem;
 class CBasePlayerPawn;
 class CCSPlayerPawn;
 class CBaseEntity;
@@ -22,8 +20,8 @@ class CBasePlayerController;
 class IGameEventListener2;
 class CTimerBase;
 class CServerSideClient;
+class CServerSideClientBase;
 class CCSGameRules;
-class BotProfile;
 
 // temporary botprofile classes
 #include "utllinkedlist.h"
@@ -67,8 +65,6 @@ public:
 	}
 };
 
-struct SndOpEventGuid_t;
-struct EmitSound_t;
 class CAttributeList;
 class CBaseModelEntity;
 class CGlobalSymbol;
@@ -76,7 +72,6 @@ class CGlobalSymbol;
 typedef IGameEventListener2 *GetLegacyGameEventListener_t(CPlayerSlot slot);
 typedef void SnapViewAngles_t(CBasePlayerPawn *pawn, const QAngle &angle);
 typedef CBaseEntity *FindEntityByClassname_t(CEntitySystem *, CEntityInstance *, const char *);
-typedef SndOpEventGuid_t EmitSoundFunc_t(IRecipientFilter &filter, CEntityIndex ent, const EmitSound_t &params);
 typedef void SwitchTeam_t(CCSPlayerController *controller, int team);
 typedef void SetPawn_t(CBasePlayerController *controller, CCSPlayerPawn *pawn, bool, bool, bool, bool);
 typedef CBaseEntity *CreateEntityByName_t(const char *className, int iForceEdictIndex);
@@ -90,7 +85,6 @@ typedef void DecalTrace_t(trace_t *trace, CGlobalSymbol *symbol, f32 size_overri
 
 namespace interfaces
 {
-	inline CGameResourceService *pGameResourceServiceServer = nullptr;
 	inline IVEngineServer2 *pEngine = nullptr;
 	inline ISource2Server *pServer = nullptr;
 	inline IGameEventManager2 *pGameEventManager = nullptr;
@@ -99,8 +93,7 @@ namespace interfaces
 	inline bool Initialize(ISmmAPI *ismm, char *error, size_t maxlen)
 	{
 		GET_V_IFACE_CURRENT(GetEngineFactory, g_pCVar, ICvar, CVAR_INTERFACE_VERSION);
-		GET_V_IFACE_CURRENT(GetEngineFactory, interfaces::pGameResourceServiceServer, CGameResourceService,
-							GAMERESOURCESERVICESERVER_INTERFACE_VERSION);
+		GET_V_IFACE_CURRENT(GetEngineFactory, g_pGameResourceServiceServer, IGameResourceService, GAMERESOURCESERVICESERVER_INTERFACE_VERSION);
 		GET_V_IFACE_CURRENT(GetServerFactory, g_pSource2GameClients, ISource2GameClients, INTERFACEVERSION_SERVERGAMECLIENTS);
 		GET_V_IFACE_CURRENT(GetServerFactory, g_pSource2GameEntities, ISource2GameEntities, SOURCE2GAMEENTITIES_INTERFACE_VERSION);
 		GET_V_IFACE_CURRENT(GetEngineFactory, interfaces::pEngine, IVEngineServer2, INTERFACEVERSION_VENGINESERVER);
@@ -109,6 +102,7 @@ namespace interfaces
 		GET_V_IFACE_CURRENT(GetEngineFactory, g_pNetworkServerService, INetworkServerService, NETWORKSERVERSERVICE_INTERFACE_VERSION);
 		GET_V_IFACE_CURRENT(GetEngineFactory, g_pNetworkMessages, INetworkMessages, NETWORKMESSAGES_INTERFACE_VERSION);
 		GET_V_IFACE_CURRENT(GetEngineFactory, interfaces::pGameEventSystem, IGameEventSystem, GAMEEVENTSYSTEM_INTERFACE_VERSION);
+		GET_V_IFACE_CURRENT(GetEngineFactory, g_pSoundSystem, ISoundSystem, SOUNDSYSTEM_INTERFACE_VERSION);
 		GET_V_IFACE_CURRENT(GetFileSystemFactory, g_pFullFileSystem, IFileSystem, FILESYSTEM_INTERFACE_VERSION);
 
 		return true;
@@ -121,20 +115,17 @@ namespace interfaces
 class KZUtils
 {
 public:
-	KZUtils(GetLegacyGameEventListener_t *GetLegacyGameEventListener, SnapViewAngles_t *SnapViewAngles, EmitSoundFunc_t *EmitSound,
-			SwitchTeam_t *SwitchTeam, SetPawn_t *SetPawn, CreateEntityByName_t *CreateEntityByName, DispatchSpawn_t *DispatchSpawn,
-			RemoveEntity_t *RemoveEntity, DebugDrawMesh_t *DebugDrawMesh, CreateBot_t *CreateBot,
-			SetOrAddAttributeValueByName_t *SetOrAddAttributeValueByName, SetModel_t *SetModel, DecalTrace_t *DecalTrace)
-		: GetLegacyGameEventListener(GetLegacyGameEventListener), SnapViewAngles(SnapViewAngles), EmitSound(EmitSound), SwitchTeam(SwitchTeam),
-		  SetPawn(SetPawn), CreateEntityByName(CreateEntityByName), DispatchSpawn(DispatchSpawn), RemoveEntity(RemoveEntity),
-		  DebugDrawMesh(DebugDrawMesh), CreateBot(CreateBot), SetOrAddAttributeValueByName(SetOrAddAttributeValueByName), SetModel(SetModel),
-		  DecalTrace(DecalTrace)
+	KZUtils(GetLegacyGameEventListener_t *GetLegacyGameEventListener, SnapViewAngles_t *SnapViewAngles, SwitchTeam_t *SwitchTeam, SetPawn_t *SetPawn,
+			CreateEntityByName_t *CreateEntityByName, DispatchSpawn_t *DispatchSpawn, RemoveEntity_t *RemoveEntity, DebugDrawMesh_t *DebugDrawMesh,
+			CreateBot_t *CreateBot, SetOrAddAttributeValueByName_t *SetOrAddAttributeValueByName, SetModel_t *SetModel, DecalTrace_t *DecalTrace)
+		: GetLegacyGameEventListener(GetLegacyGameEventListener), SnapViewAngles(SnapViewAngles), SwitchTeam(SwitchTeam), SetPawn(SetPawn),
+		  CreateEntityByName(CreateEntityByName), DispatchSpawn(DispatchSpawn), RemoveEntity(RemoveEntity), DebugDrawMesh(DebugDrawMesh),
+		  CreateBot(CreateBot), SetOrAddAttributeValueByName(SetOrAddAttributeValueByName), SetModel(SetModel), DecalTrace(DecalTrace)
 	{
 	}
 
 	GetLegacyGameEventListener_t *const GetLegacyGameEventListener;
 	SnapViewAngles_t *const SnapViewAngles;
-	EmitSoundFunc_t *const EmitSound;
 	SwitchTeam_t *const SwitchTeam;
 	SetPawn_t *const SetPawn;
 	CreateEntityByName_t *const CreateEntityByName;
@@ -147,7 +138,7 @@ public:
 	DecalTrace_t *const DecalTrace;
 
 	virtual CGameConfig *GetGameConfig();
-	virtual const CGlobalVars *GetServerGlobals();
+	virtual const CGlobalVars *GetServerGlobals(bool unmodified = false);
 	virtual CGlobalVars *GetGlobals();
 
 	virtual CBaseEntity *FindEntityByClassname(CEntityInstance *start, const char *name);
@@ -170,17 +161,14 @@ public:
 
 	virtual void AddTimer(CTimerBase *timer, bool preserveMapChange = true);
 	virtual void RemoveTimer(CTimerBase *timer);
-	virtual CUtlVector<CServerSideClient *> *GetClientList();
+	virtual CUtlVector<CServerSideClientBase *> *GetClientList();
 
-	CServerSideClient *GetClientBySlot(CPlayerSlot slot)
-	{
-		return (GetClientList() && GetController(slot)) ? GetClientList()->Element(slot.Get()) : nullptr;
-	}
+	CServerSideClient *GetClientBySlot(CPlayerSlot slot);
 
-	virtual CUtlString GetCurrentMapName(bool *success = NULL);
+	virtual std::string GetCurrentMapName(bool *success = NULL);
 	virtual u64 GetCurrentMapWorkshopID();
-	virtual CUtlString GetCurrentMapVPK();
-	virtual CUtlString GetCurrentMapDirectory();
+	virtual std::string GetCurrentMapVPK();
+	virtual std::string GetCurrentMapDirectory();
 	virtual u64 GetCurrentMapSize();
 	// MD5 calculation is not very fast, avoid doing this too often!
 	virtual bool UpdateCurrentMapMD5();

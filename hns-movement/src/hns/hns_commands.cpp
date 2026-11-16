@@ -71,7 +71,7 @@ CON_COMMAND_F(hns_perf_stats, "Print per-player jump/perf counts since connect."
 		return;
 	}
 	META_CONPRINTF("%-4s %-24s %8s %8s %7s %10s %10s\n", "slot", "name", "jumps", "perfs", "perf%", "lastspeed", "lastgnd");
-	for (i32 i = 0; i < MAXPLAYERS; i++)
+	for (i32 i = 0; i < MAX_PLAYERS; i++)
 	{
 		HNSPlayer *player = g_pHNSPlayerManager->ToPlayer(CPlayerSlot(i));
 		if (!player || !player->IsConnectedController())

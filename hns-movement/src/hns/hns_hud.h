@@ -2,7 +2,7 @@
 #include "common.h"
 
 class HNSPlayer;
-class PlayerCommand;
+class CUserCmd;
 
 // Speed and key HUD (hns_speed_hud), shown in the centre of the screen:
 //   Speed: 312 u/s (289)        current horizontal speed, takeoff speed of the last jump in brackets
@@ -13,7 +13,7 @@ class PlayerCommand;
 namespace hns::hud
 {
 	// Reads the player's inputs for this tick (called before the game processes them; nothing is changed).
-	void OnProcessUsercmds(HNSPlayer *player, PlayerCommand *cmds, int numcmds);
+	void OnProcessUsercmds(HNSPlayer *player, CUserCmd *cmds, int numcmds);
 	// The player jumped and left the ground; the takeoff speed is final at this point.
 	void OnTakeoff(HNSPlayer *player);
 	void OnGameFrame();

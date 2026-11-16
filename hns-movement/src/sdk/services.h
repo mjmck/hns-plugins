@@ -78,7 +78,7 @@ class CPlayer_ObserverServices : public CPlayerPawnComponent
 
 public:
 	DECLARE_SCHEMA_CLASS_ENTITY(CPlayer_ObserverServices)
-	SCHEMA_FIELD(ObserverMode_t, m_iObserverMode)
+	SCHEMA_FIELD(uint8, m_iObserverMode)
 	SCHEMA_FIELD(ObserverMode_t, m_iObserverLastMode)
 	SCHEMA_FIELD(CHandle<CBaseEntity>, m_hObserverTarget)
 };
@@ -89,6 +89,10 @@ class CPlayer_CameraServices : public CPlayerPawnComponent
 
 public:
 	DECLARE_SCHEMA_CLASS_ENTITY(CPlayer_CameraServices)
+	SCHEMA_FIELD(QAngle, m_vecCsViewPunchAngle)
+	// Clients decay the view punch by the time since this tick.
+	SCHEMA_FIELD(i32, m_nCsViewPunchAngleTick)
+	SCHEMA_FIELD(f32, m_flCsViewPunchAngleTickRatio)
 	// If this resolves on the client, it skips the viewmodel render passes.
 	SCHEMA_FIELD(CHandle<CBaseEntity>, m_hViewEntity)
 };
@@ -187,6 +191,10 @@ public:
 	SCHEMA_FIELD(bool, m_duckUntilOnGround)
 	SCHEMA_FIELD(CCSPlayerLegacyJump, m_LegacyJump)
 	SCHEMA_FIELD(CCSPlayerModernJump, m_ModernJump)
+	SCHEMA_FIELD(GameTime_t, m_fStashGrenadeParameterWhen)
+	SCHEMA_FIELD(bool, m_bUseFrictionStashedSpeed)
+	SCHEMA_FIELD(float, m_flUseFrictionStashedSpeedUntilFrac)
+	SCHEMA_FIELD(float, m_flFrictionStashedSpeed)
 };
 
 class CCSPlayer_WaterServices : public CPlayerPawnComponent

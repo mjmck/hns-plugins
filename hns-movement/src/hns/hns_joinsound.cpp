@@ -34,7 +34,7 @@ namespace hns::joinsound
 		bool handled;    // Sound queued (or skipped by the cooldown) for this connection.
 	};
 
-	static_persist SlotState slots[MAXPLAYERS + 1];
+	static_persist SlotState slots[MAX_PLAYERS + 1];
 
 	static_persist const char exampleFile[] =
 		"// hns-movement join sounds. Edit, then run hns_reload (server console or rcon).\n"
@@ -197,7 +197,7 @@ namespace hns::joinsound
 			return;
 		}
 		// One single-recipient EmitSound per listener, exactly like CS2KZ's jumpstat sounds, so everyone hears it in 2D.
-		for (i32 i = 0; i < MAXPLAYERS; i++)
+		for (i32 i = 0; i < MAX_PLAYERS; i++)
 		{
 			HNSPlayer *player = g_pHNSPlayerManager->ToPlayer(CPlayerSlot(i));
 			if (!player || !player->IsConnectedController() || player->IsFakeClient())
@@ -229,7 +229,7 @@ namespace hns::joinsound
 	static_function void TryQueue(HNSPlayer *player)
 	{
 		i32 slot = player->GetPlayerSlot().Get();
-		if (slot < 0 || slot > MAXPLAYERS)
+		if (slot < 0 || slot > MAX_PLAYERS)
 		{
 			return;
 		}
@@ -265,7 +265,7 @@ namespace hns::joinsound
 			return;
 		}
 		i32 slot = player->GetPlayerSlot().Get();
-		if (slot < 0 || slot > MAXPLAYERS)
+		if (slot < 0 || slot > MAX_PLAYERS)
 		{
 			return;
 		}
@@ -285,7 +285,7 @@ namespace hns::joinsound
 			return;
 		}
 		i32 slot = player->GetPlayerSlot().Get();
-		if (slot < 0 || slot > MAXPLAYERS)
+		if (slot < 0 || slot > MAX_PLAYERS)
 		{
 			return;
 		}
@@ -296,7 +296,7 @@ namespace hns::joinsound
 	void OnPlayerReset(HNSPlayer *player)
 	{
 		i32 slot = player->GetPlayerSlot().Get();
-		if (slot >= 0 && slot <= MAXPLAYERS)
+		if (slot >= 0 && slot <= MAX_PLAYERS)
 		{
 			slots[slot] = {};
 		}

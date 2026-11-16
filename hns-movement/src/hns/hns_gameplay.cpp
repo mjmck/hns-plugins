@@ -24,7 +24,7 @@ namespace hns::gameplay
 	// sv_falldamage_scale before the freeze turned it off. < 0 = not overridden.
 	static_global f32 savedFallDamageScale = -1.0f;
 	// Which slots currently show the frozen tint/effect.
-	static_global bool frozenVisual[MAXPLAYERS + 1] {};
+	static_global bool frozenVisual[MAX_PLAYERS + 1] {};
 
 	static_global bool shouldSwitchTeams {};
 	static_global i32 terroristWinStreak {};
@@ -94,7 +94,7 @@ namespace hns::gameplay
 	// Brings each player's tint/effect in line with IsFrozen. Cheap: only touches players whose state changed.
 	static_function void UpdateFrozenVisuals()
 	{
-		for (i32 i = 0; i < MAXPLAYERS; i++)
+		for (i32 i = 0; i < MAX_PLAYERS; i++)
 		{
 			HNSPlayer *player = g_pHNSPlayerManager->ToPlayer(CPlayerSlot(i));
 			if (!player || !player->IsConnectedController())
@@ -133,7 +133,7 @@ namespace hns::gameplay
 
 	static_function void SwitchTeams()
 	{
-		for (i32 i = 0; i < MAXPLAYERS; i++)
+		for (i32 i = 0; i < MAX_PLAYERS; i++)
 		{
 			HNSPlayer *player = g_pHNSPlayerManager->ToPlayer(CPlayerSlot(i));
 			if (!player || !player->IsConnectedController())

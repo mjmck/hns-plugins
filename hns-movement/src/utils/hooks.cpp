@@ -11,8 +11,12 @@
 #include "entityclass.h"
 #include "igameevents.h"
 #include "igamesystem.h"
-#include "iserver.h"
-#include "bufferstring.h"
+#include "steam/steam_gameserver.h"
+#include "tier0/buffer_string.h"
+#include "engine2/igameeventsystem.h"
+#include "engine2/gamesessionconfiguration.h"
+#include "engine2/inetworkserverservice.h"
+#include "engine2/networkgameserverbase.h"
 
 #include "hns_plugin.h"
 #include "hns/hns_player.h"
@@ -32,9 +36,6 @@
 
 extern CGameConfig *g_pGameConfig;
 
-class GameSessionConfiguration_t
-{
-};
 
 class EntListener : public IEntityListener
 {
@@ -209,11 +210,11 @@ static KHook::Return<void> PhysicsSimulatePost(CCSPlayerController *controller)
 
 static KHook::Member<CCSPlayerController, void> PhysicsSimulate(PhysicsSimulatePre, PhysicsSimulatePost);
 
-static KHook::Return<i32> ProcessUsercmdsPre(CCSPlayerController *controller, PlayerCommand *cmds, int numcmds, bool paused, float margin);
+static KHook::Return<i32> ProcessUsercmdsPre(CCSPlayerController *controller, CUserCmd *cmds, int numcmds, bool paused, float margin);
 
-static KHook::Member<CCSPlayerController, i32, PlayerCommand *, int, bool, float> ProcessUsercmds(ProcessUsercmdsPre, nullptr);
+static KHook::Member<CCSPlayerController, i32, CUserCmd *, int, bool, float> ProcessUsercmds(ProcessUsercmdsPre, nullptr);
 
-static KHook::Return<i32> ProcessUsercmdsPre(CCSPlayerController *controller, PlayerCommand *cmds, int numcmds, bool paused, float margin)
+static KHook::Return<i32> ProcessUsercmdsPre(CCSPlayerController *controller, CUserCmd *cmds, int numcmds, bool paused, float margin)
 {
 	VPROF_BUDGET(__func__, "HNS");
 	MovementPlayer *player = playerManager->ToPlayer(controller);
@@ -223,7 +224,7 @@ static KHook::Return<i32> ProcessUsercmdsPre(CCSPlayerController *controller, Pl
 	return {KHook::Action::Supersede, retValue};
 }
 
-static KHook::Return<void> SetupMovePre(CCSPlayer_MovementServices *ms, PlayerCommand *pc, CMoveData *mv)
+static KHook::Return<void> SetupMovePre(CCSPlayer_MovementServices *ms, CUserCmd *pc, CMoveData *mv)
 {
 	VPROF_BUDGET(__func__, "HNS");
 	MovementPlayer *player = playerManager->ToPlayer(ms);
@@ -233,14 +234,14 @@ static KHook::Return<void> SetupMovePre(CCSPlayer_MovementServices *ms, PlayerCo
 	return {KHook::Action::Ignore};
 }
 
-static KHook::Return<void> SetupMovePost(CCSPlayer_MovementServices *ms, PlayerCommand *pc, CMoveData *mv)
+static KHook::Return<void> SetupMovePost(CCSPlayer_MovementServices *ms, CUserCmd *pc, CMoveData *mv)
 {
 	VPROF_BUDGET(__func__, "HNS");
 	playerManager->ToPlayer(ms)->OnSetupMovePost(pc);
 	return {KHook::Action::Ignore};
 }
 
-static KHook::Member<CCSPlayer_MovementServices, void, PlayerCommand *, CMoveData *> SetupMove(SetupMovePre, SetupMovePost);
+static KHook::Member<CCSPlayer_MovementServices, void, CUserCmd *, CMoveData *> SetupMove(SetupMovePre, SetupMovePost);
 
 static KHook::Return<void> ProcessMovementPre(CCSPlayer_MovementServices *ms, CMoveData *mv)
 {

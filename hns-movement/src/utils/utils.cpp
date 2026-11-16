@@ -14,17 +14,19 @@
 #include "virtual.h"
 
 #include "networkbasetypes.pb.h"
+#include "gameevents.pb.h"
 
 #include "convar.h"
-#include "igameeventsystem.h"
+#include "engine2/igameeventsystem.h"
 #include "gametrace.h"
 #include "bspflags.h"
-#include "filesystem.h"
+#include "filesystem/ifilesystem.h"
 #include "interfaces/interfaces.h"
 #include "networksystem/inetworkmessages.h"
 #include "steam/steam_gameserver.h"
 
 #include "tier0/dbg.h"
+#include "tier0/generichash.h"
 #include "tier0/memdbgon.h"
 
 #define FCVAR_FLAGS_TO_REMOVE (FCVAR_HIDDEN | FCVAR_DEVELOPMENTONLY | FCVAR_DEFENSIVE)
@@ -39,7 +41,6 @@
 
 CGameConfig *g_pGameConfig = NULL;
 KZUtils *g_pKZUtils = NULL;
-extern CSteamGameServerAPIContext g_steamAPI;
 
 #define SERVER_VERSION_KEY "ServerVersion="
 static_global u32 serverVersion;
@@ -75,7 +76,6 @@ bool utils::Initialize(ISmmAPI *ismm, char *error, size_t maxlen)
 	bool optionalResolved = true;
 	RESOLVE_SIG(g_pGameConfig, "SnapViewAngles", SnapViewAngles_t, SnapViewAngles, sigResolved);
 	RESOLVE_SIG(g_pGameConfig, "GetLegacyGameEventListener", GetLegacyGameEventListener_t, GetLegacyGameEventListener, optionalResolved);
-	RESOLVE_SIG(g_pGameConfig, "EmitSound", EmitSoundFunc_t, EmitSound, optionalResolved);
 	RESOLVE_SIG(g_pGameConfig, "CCSPlayerController_SwitchTeam", SwitchTeam_t, SwitchTeam, optionalResolved);
 	RESOLVE_SIG(g_pGameConfig, "CBasePlayerController_SetPawn", SetPawn_t, SetPawn, optionalResolved);
 	RESOLVE_SIG(g_pGameConfig, "CreateEntityByName", CreateEntityByName_t, CreateEntityByName, optionalResolved);
@@ -97,7 +97,7 @@ bool utils::Initialize(ISmmAPI *ismm, char *error, size_t maxlen)
 	{
 		HNS_LOG_WARN(LogChannel::General, "Some optional signatures did not resolve. Movement is unaffected.\n");
 	}
-	g_pKZUtils = new KZUtils(GetLegacyGameEventListener, SnapViewAngles, EmitSound, SwitchTeam, SetPawn, CreateEntityByName, DispatchSpawn,
+	g_pKZUtils = new KZUtils(GetLegacyGameEventListener, SnapViewAngles, SwitchTeam, SetPawn, CreateEntityByName, DispatchSpawn,
 							 RemoveEntity, DebugDrawMesh, CreateBot, SetOrAddAttributeValueByName, SetModel, DecalTrace);
 
 	utils::UpdateServerVersion();
@@ -173,7 +173,7 @@ CBasePlayerController *utils::GetController(CBaseEntity *entity)
 		CBasePlayerPawn *pawn = static_cast<CBasePlayerPawn *>(entity);
 		if (!pawn->m_hController().IsValid() || pawn->m_hController.Get() == 0)
 		{
-			for (i32 i = 0; i <= MAXPLAYERS; i++)
+			for (i32 i = 0; i <= MAX_PLAYERS; i++)
 			{
 				controller = (CCSPlayerController *)utils::GetController(CPlayerSlot(i));
 				if (controller && controller->m_hObserverPawn() && controller->m_hObserverPawn().Get() == entity)
@@ -191,7 +191,7 @@ CBasePlayerController *utils::GetController(CBaseEntity *entity)
 		if (!pawn->m_hController().IsValid() || pawn->m_hController.Get() == 0)
 		{
 			// Seems like the pawn lost its controller, we can try looping through the controllers to find this pawn instead.
-			for (i32 i = 0; i <= MAXPLAYERS; i++)
+			for (i32 i = 0; i <= MAX_PLAYERS; i++)
 			{
 				controller = (CCSPlayerController *)utils::GetController(CPlayerSlot(i));
 				if (controller && controller->m_hPlayerPawn() && controller->m_hPlayerPawn().Get() == entity)
@@ -215,7 +215,7 @@ CBasePlayerController *utils::GetController(CBaseEntity *entity)
 
 CBasePlayerController *utils::GetController(CPlayerSlot slot)
 {
-	if (!GameEntitySystem() || slot.Get() < 0 || slot.Get() > MAXPLAYERS)
+	if (!GameEntitySystem() || slot.Get() < 0 || slot.Get() > MAX_PLAYERS)
 	{
 		return nullptr;
 	}
@@ -240,18 +240,61 @@ CPlayerSlot utils::GetEntityPlayerSlot(CBaseEntity *entity)
 	}
 }
 
-void utils::PlaySoundToClient(CPlayerSlot player, const char *sound, f32 volume)
+static_function u32 TakeSoundGuid()
 {
-	if (g_HNSPlugin.unloading || !g_pKZUtils->EmitSound)
+	static_persist const i32 offset = g_pGameConfig->GetOffset("TakeSoundGuid");
+#ifdef _WIN32
+	// The guid is returned through a hidden out pointer on Windows.
+	u32 guid = 0;
+	CALL_VIRTUAL(u32 *, offset, g_pSoundSystem, &guid);
+	return guid;
+#else
+	return CALL_VIRTUAL(u32, offset, g_pSoundSystem);
+#endif
+}
+
+void utils::PlaySoundToClient(CPlayerSlot player, const char *sound, std::optional<f32> volume)
+{
+	if (g_HNSPlugin.unloading)
 	{
 		return;
 	}
 
-	CSingleRecipientFilter filter(player.Get());
-	EmitSound_t soundParams;
-	soundParams.m_pSoundName = sound;
-	soundParams.m_flVolume = volume;
-	g_pKZUtils->EmitSound(filter, player.Get() + 1, soundParams);
+	NetMessageInfo_t *netmsg = g_pNetworkMessages->FindNetworkMessagePartial("CMsgSosStartSoundEvent");
+	if (!netmsg)
+	{
+		return;
+	}
+
+	u32 guid = TakeSoundGuid();
+	auto msg = netmsg->AllocateMessage()->ToPB<CMsgSosStartSoundEvent>();
+	msg->set_soundevent_hash(MurmurHash2LowerCase(sound, 0x53524332));
+	msg->set_soundevent_guid(guid);
+	msg->set_seed(guid);
+	// No source entity, so the sound plays at the listener without distance falloff.
+	msg->set_source_entity_index(-1);
+
+	// EmitSound_t::m_flVolume ends up in "public.volume_atten", which csgo_mega sound events don't have.
+	// "public.volume" replaces the volume authored in the sound event.
+	if (volume.has_value())
+	{
+		static_persist const u32 volumeField = MurmurHash2LowerCase("public.volume", 0x31415926);
+		// "public.volume" is a linear gain, but perceived loudness doubles every +10 dB (x3.16 gain),
+		// so raise to log2(3.16) to make 0.5 sound half as loud and 2 twice as loud.
+		f32 value = powf(volume.value(), 1.661f);
+		// Field hash, field type (float), data size, array index, data.
+		u8 params[11] = {};
+		memcpy(&params[0], &volumeField, sizeof(volumeField));
+		params[4] = 8;
+		params[5] = sizeof(value);
+		params[6] = 0;
+		memcpy(&params[7], &value, sizeof(value));
+		msg->set_packed_params(params, sizeof(params));
+	}
+
+	CReliableSingleUserRecipientFilter filter(player.Get());
+	interfaces::pGameEventSystem->PostEventAbstract(0, false, &filter, netmsg, msg, 0);
+	delete msg;
 }
 
 f32 utils::NormalizeDeg(f32 a)
@@ -379,19 +422,19 @@ bool utils::SetConVarValue(CPlayerSlot slot, ConVarRefAbstract conVarRef, const 
 
 void utils::SendConVarValue(CPlayerSlot slot, const char *conVar, const char *value)
 {
-	INetworkMessageInternal *netmsg = g_pNetworkMessages->FindNetworkMessagePartial("SetConVar");
+	NetMessageInfo_t *netmsg = g_pNetworkMessages->FindNetworkMessagePartial("SetConVar");
 	auto msg = netmsg->AllocateMessage()->ToPB<CNETMsg_SetConVar>();
 	CMsg_CVars_CVar *cvar = msg->mutable_convars()->add_cvars();
 	cvar->set_name(conVar);
 	cvar->set_value(value);
-	CSingleRecipientFilter filter(slot.Get());
+	CReliableSingleUserRecipientFilter filter(slot.Get());
 	interfaces::pGameEventSystem->PostEventAbstract(0, false, &filter, netmsg, msg, 0);
 	delete msg;
 }
 
 void utils::SendMultipleConVarValues(CPlayerSlot slot, const char **cvars, const char **values, u32 size)
 {
-	INetworkMessageInternal *netmsg = g_pNetworkMessages->FindNetworkMessagePartial("SetConVar");
+	NetMessageInfo_t *netmsg = g_pNetworkMessages->FindNetworkMessagePartial("SetConVar");
 	auto msg = netmsg->AllocateMessage()->ToPB<CNETMsg_SetConVar>();
 	for (u32 i = 0; i < size; i++)
 	{
@@ -399,7 +442,7 @@ void utils::SendMultipleConVarValues(CPlayerSlot slot, const char **cvars, const
 		cvar->set_name(cvars[i]);
 		cvar->set_value(values[i]);
 	}
-	CSingleRecipientFilter filter(slot.Get());
+	CReliableSingleUserRecipientFilter filter(slot.Get());
 	interfaces::pGameEventSystem->PostEventAbstract(0, false, &filter, netmsg, msg, 0);
 	delete msg;
 }
@@ -426,7 +469,7 @@ void utils::SendConVarValue(CPlayerSlot slot, ConVarRefAbstract conVarRef, const
 
 void utils::SendMultipleConVarValues(CPlayerSlot slot, ConVarRefAbstract **conVarRefs, const char **values, u32 size)
 {
-	INetworkMessageInternal *netmsg = g_pNetworkMessages->FindNetworkMessagePartial("SetConVar");
+	NetMessageInfo_t *netmsg = g_pNetworkMessages->FindNetworkMessagePartial("SetConVar");
 	auto msg = netmsg->AllocateMessage()->ToPB<CNETMsg_SetConVar>();
 	for (u32 i = 0; i < size; i++)
 	{
@@ -439,14 +482,14 @@ void utils::SendMultipleConVarValues(CPlayerSlot slot, ConVarRefAbstract **conVa
 		cvar->set_name(conVarRefs[i]->GetName());
 		cvar->set_value(values[i]);
 	}
-	CSingleRecipientFilter filter(slot.Get());
+	CReliableSingleUserRecipientFilter filter(slot.Get());
 	interfaces::pGameEventSystem->PostEventAbstract(0, false, &filter, netmsg, msg, 0);
 	delete msg;
 }
 
 void utils::SendMultipleConVarValues(CPlayerSlot slot, ConVarRefAbstract **conVarRefs, const CVValue_t *values, u32 size)
 {
-	INetworkMessageInternal *netmsg = g_pNetworkMessages->FindNetworkMessagePartial("SetConVar");
+	NetMessageInfo_t *netmsg = g_pNetworkMessages->FindNetworkMessagePartial("SetConVar");
 	auto msg = netmsg->AllocateMessage()->ToPB<CNETMsg_SetConVar>();
 	for (u32 i = 0; i < size; i++)
 	{
@@ -461,7 +504,7 @@ void utils::SendMultipleConVarValues(CPlayerSlot slot, ConVarRefAbstract **conVa
 		cvar->set_name(conVarRefs[i]->GetName());
 		cvar->set_value(buf.Get());
 	}
-	CSingleRecipientFilter filter(slot.Get());
+	CReliableSingleUserRecipientFilter filter(slot.Get());
 	interfaces::pGameEventSystem->PostEventAbstract(0, false, &filter, netmsg, msg, 0);
 	delete msg;
 }
@@ -480,7 +523,6 @@ static_function void InitSpawnTraceFilter(CTraceFilter &filter)
 	filter.m_bShouldIgnoreDisabledPairs = true;
 	filter.m_nCollisionGroup = COLLISION_GROUP_DEBRIS;
 	filter.m_nInteractsWith = 0x2c3011;
-	filter.m_bUnknown = true;
 	filter.m_nObjectSetMask = RNQUERY_OBJECTS_ALL;
 	filter.m_nInteractsAs = 0x40000;
 }
@@ -673,12 +715,14 @@ void utils::ResetMapIfEmpty()
 	// There are players in the server already, do not restart
 	if (g_pKZUtils->GetPlayerCount() > 0)
 	{
+		KZ_LOG_DEBUG(LogChannel::General, "Server has %d players, not restarting map.\n", g_pKZUtils->GetPlayerCount());
 		return;
 	}
 
 	// Don't restart if the server is just up to map reload loops.
 	if (g_pKZUtils->GetGlobals() && g_pKZUtils->GetGlobals()->curtime < 30.0f)
 	{
+		KZ_LOG_DEBUG(LogChannel::General, "Server is only %.2f seconds old, not restarting map.\n", g_pKZUtils->GetGlobals()->curtime);
 		return;
 	}
 
@@ -721,11 +765,11 @@ bool utils::IsServerSecure()
 	{
 		return false;
 	}
-	if (!g_steamAPI.SteamGameServer())
+	if (!SteamGameServer())
 	{
 		return !(CommandLine()->HasParm("-insecure") || CommandLine()->HasParm("-tools"));
 	}
-	return g_steamAPI.SteamGameServer()->BSecure();
+	return SteamGameServer()->BSecure();
 }
 
 void utils::UpdateServerVersion()
@@ -733,15 +777,15 @@ void utils::UpdateServerVersion()
 	FileHandle_t fp = g_pFullFileSystem->Open("steam.inf", "r");
 	if (fp)
 	{
-		CUtlString line = g_pFullFileSystem->ReadLine(fp);
-		while (!line.IsEmpty())
+		std::string line = g_pFullFileSystem->ReadLine(fp).Get();
+		while (!line.empty())
 		{
-			if (line.MatchesPattern(CUtlString(SERVER_VERSION_KEY) + "*"))
+			if (line.starts_with(SERVER_VERSION_KEY))
 			{
-				serverVersion = atoi(line.Get() + strlen(SERVER_VERSION_KEY));
+				serverVersion = atoi(line.c_str() + strlen(SERVER_VERSION_KEY));
 				break;
 			}
-			line = g_pFullFileSystem->ReadLine(fp);
+			line = g_pFullFileSystem->ReadLine(fp).Get();
 		}
 		g_pFullFileSystem->Close(fp);
 	}
@@ -774,8 +818,14 @@ bool utils::WriteBufferToFile(const char *relativePath, const std::vector<char> 
 		HNS_LOG_WARN(LogChannel::General, "Failed to open file for writing: %s\n", tmpPath);
 		return false;
 	}
-	fwrite(buffer.data(), 1, buffer.size(), fp);
-	fclose(fp);
+	bool writeOk = fwrite(buffer.data(), 1, buffer.size(), fp) == buffer.size();
+	bool closeOk = fclose(fp) == 0;
+	if (!writeOk || !closeOk)
+	{
+		KZ_LOG_WARN(LogChannel::General, "Failed to write file: %s\n", tmpPath);
+		remove(tmpPath);
+		return false;
+	}
 
 #ifdef _WIN32
 	if (!MoveFileExA(tmpPath, absPath, MOVEFILE_REPLACE_EXISTING))
@@ -800,12 +850,24 @@ bool utils::ReadBufferFromFile(const char *relativePath, std::vector<char> &outB
 		HNS_LOG_WARN(LogChannel::General, "Failed to open file for reading: %s\n", absPath);
 		return false;
 	}
-	fseek(fp, 0, SEEK_END);
-	long size = ftell(fp);
-	fseek(fp, 0, SEEK_SET);
+	// ftell returns a 32-bit long on Windows, which breaks past 2 GiB.
+	std::error_code error;
+	uintmax_t size = std::filesystem::file_size(absPath, error);
+	if (error)
+	{
+		fclose(fp);
+		KZ_LOG_WARN(LogChannel::General, "Failed to get size of file: %s\n", absPath);
+		return false;
+	}
 	outBuffer.resize(size);
-	fread(outBuffer.data(), 1, size, fp);
+	bool readOk = fread(outBuffer.data(), 1, size, fp) == size;
 	fclose(fp);
+	if (!readOk)
+	{
+		KZ_LOG_WARN(LogChannel::General, "Failed to read file: %s\n", absPath);
+		outBuffer.clear();
+		return false;
+	}
 	return true;
 }
 

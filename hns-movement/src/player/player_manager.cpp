@@ -1,6 +1,7 @@
 #include "player.h"
 #include "utils/utils.h"
-#include "iserver.h"
+#include "engine2/inetworkgameserver.h"
+#include "engine2/inetworkserverservice.h"
 
 Player *PlayerManager::ToPlayer(CPlayerPawnComponent *component)
 {
@@ -13,9 +14,8 @@ Player *PlayerManager::ToPlayer(CBasePlayerController *controller)
 	{
 		return nullptr;
 	}
-	int index = controller->m_pEntity->m_EHandle.GetEntryIndex();
-	assert(index >= 0 && index < MAXPLAYERS + 1);
-	return this->players[index];
+	// The controller of player slot N is the entity at index N + 1.
+	return this->ToPlayer(CPlayerSlot(controller->m_pEntity->m_EHandle.GetEntryIndex() - 1));
 }
 
 Player *PlayerManager::ToPlayer(CBasePlayerPawn *pawn)
@@ -34,9 +34,11 @@ Player *PlayerManager::ToPlayer(CBasePlayerPawn *pawn)
 
 Player *PlayerManager::ToPlayer(CPlayerSlot slot)
 {
-	int index = slot.Get() + 1;
-	assert(index >= 0 && index < MAXPLAYERS + 1);
-	return this->players[index];
+	if (slot.Get() < 0 || slot.Get() >= MAX_PLAYERS)
+	{
+		return nullptr;
+	}
+	return this->players[slot.Get()];
 }
 
 Player *PlayerManager::ToPlayer(CEntityIndex entIndex)
@@ -64,11 +66,11 @@ Player *PlayerManager::ToPlayer(CEntityIndex entIndex)
 Player *PlayerManager::ToPlayer(CPlayerUserId userID)
 {
 	// Untested, careful!
-	for (int i = 0; i < MAXPLAYERS; i++)
+	for (i32 i = 0; i < MAX_PLAYERS; i++)
 	{
 		if (interfaces::pEngine->GetPlayerUserId(i) == userID.Get())
 		{
-			return this->players[i + 1];
+			return this->players[i];
 		}
 	}
 	return nullptr;
@@ -76,14 +78,30 @@ Player *PlayerManager::ToPlayer(CPlayerUserId userID)
 
 Player *PlayerManager::SteamIdToPlayer(u64 steamID, bool validated)
 {
-	for (size_t idx = 0; idx < KZ_ARRAYSIZE(this->players); idx++)
+	for (Player *player : this->players)
 	{
-		if (this->players[idx]->GetSteamId64(validated) == steamID)
+		if (player->GetSteamId64(validated) == steamID)
 		{
-			return this->players[idx];
+			return player;
 		}
 	}
 
+	return nullptr;
+}
+
+Player *PlayerManager::SessionToPlayer(u32 sessionID)
+{
+	if (sessionID == 0)
+	{
+		return nullptr;
+	}
+	for (Player *player : this->players)
+	{
+		if (player->sessionID == sessionID)
+		{
+			return player;
+		}
+	}
 	return nullptr;
 }
 
@@ -96,10 +114,15 @@ void PlayerManager::OnClientConnect(CPlayerSlot slot, const char *pszName, uint6
 									CBufferString *pRejectReason)
 {
 	Player *player = this->ToPlayer(slot);
+	// A player reconnecting into their held slot is still on the same session.
+	if (player->sessionID == 0)
+	{
+		player->sessionID = this->nextSessionID++;
+	}
 	player->OnPlayerConnect(xuid);
 
-	// Enqueue for auth validation if not already authenticated
-	if (!player->IsAuthenticated() && !player->IsFakeClient())
+	// The controller does not exist yet, so even a client the engine already authenticated has to wait in the queue.
+	if (!player->IsFakeClient())
 	{
 		this->AddToAuthQueue(slot);
 	}
@@ -124,13 +147,16 @@ void PlayerManager::OnClientPutInServer(CPlayerSlot slot, char const *pszName, i
 
 void PlayerManager::OnClientActive(CPlayerSlot slot, bool bLoadGame, const char *pszName, uint64 xuid)
 {
+	// Bots never go through ClientConnect.
+	if (this->ToPlayer(slot)->sessionID == 0)
+	{
+		this->ToPlayer(slot)->sessionID = this->nextSessionID++;
+	}
 	Player *player = this->ToPlayer(slot);
 	player->SetUnauthenticatedSteamID(xuid);
-	// Queue for Steam validation; PerformAuthChecks (every game frame) authorizes once the engine has validated the ticket.
-	if (!player->IsFakeClient() && !player->authAuthorized)
-	{
-		this->AddToAuthQueue(slot);
-	}
+	// HNS: queue for Steam validation here too; PerformAuthChecks (every game frame) authorizes once the engine has validated
+	// the ticket and the controller exists. AddToAuthQueue ignores bots and players already queued or authorized.
+	this->AddToAuthQueue(slot);
 	player->OnPlayerActive();
 }
 
@@ -168,7 +194,7 @@ void PlayerManager::OnLateLoad()
 	}
 	for (auto player : players)
 	{
-		if (player && player->IsAuthenticated())
+		if (player && player->IsEngineAuthenticated())
 		{
 			this->AuthorizeClient(player->GetPlayerSlot());
 		}
@@ -190,8 +216,7 @@ void PlayerManager::OnValidateAuthTicket(ValidateAuthTicketResponse_t *pResponse
 
 	for (Player *player : players)
 	{
-		CServerSideClient *cl = player->GetClient();
-		if (cl && cl->GetClientSteamID() == pResponse->m_SteamID)
+		if (player->IsConnected() && player->GetClient()->GetClientSteamID() == pResponse->m_SteamID)
 		{
 			this->AuthorizeClient(player->GetPlayerSlot());
 			return;
@@ -245,7 +270,15 @@ void PlayerManager::AuthorizeClient(CPlayerSlot slot)
 		return;
 	}
 
+	// A connected client has no controller until the game handles ClientConnect, and OnAuthorized needs one.
+	if (!player->GetController())
+	{
+		this->AddToAuthQueue(slot);
+		return;
+	}
+
 	// Mark as authorized and clear pending flag
+	player->authorizedSteamID = player->GetClient()->GetClientSteamID();
 	player->authAuthorized = true;
 	player->authPending = false;
 	this->RemoveFromAuthQueue(slot);
@@ -275,7 +308,7 @@ void PlayerManager::PerformAuthChecks()
 		}
 
 		// Check if engine has validated this player's auth identity
-		if (player->IsAuthenticated())
+		if (player->IsEngineAuthenticated())
 		{
 			this->AuthorizeClient(slot);
 		}

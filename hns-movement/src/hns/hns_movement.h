@@ -4,7 +4,7 @@
 #include "utlvector.h"
 
 class HNSPlayer;
-class PlayerCommand;
+class CUserCmd;
 class CTraceFilter;
 
 // Ported from CS2KZ's Classic mode (src/kz/mode/kz_mode_ckz.h/.cpp). Names and structure are kept close to upstream
@@ -60,7 +60,7 @@ public:
 
 	void OnPhysicsSimulate();
 	void OnPhysicsSimulatePost();
-	void OnSetupMove(PlayerCommand *pc);
+	void OnSetupMove(CUserCmd *pc);
 	void OnProcessMovement();
 	void OnPlayerMove();
 	void OnProcessMovementPost();

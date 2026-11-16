@@ -15,7 +15,7 @@ class CCSPlayer_MovementServices;
 class CCSPlayerController;
 class MovementPlayer;
 class CCSPlayerPawnBase;
-class PlayerCommand;
+class CUserCmd;
 
 #ifdef DEBUG_TPM
 struct TraceHistory
@@ -36,7 +36,7 @@ struct TraceHistory
 	Vector velocity;
 };
 
-extern CUtlVector<TraceHistory> traceHistory;
+extern std::vector<TraceHistory> traceHistory;
 #endif
 
 namespace movement
@@ -83,13 +83,13 @@ public:
 	virtual void OnPhysicsSimulate();
 	virtual void OnPhysicsSimulatePost();
 
-	virtual void OnProcessUsercmds(PlayerCommand *, int) {}
+	virtual void OnProcessUsercmds(CUserCmd *, int) {}
 
-	virtual void OnProcessUsercmdsPost(PlayerCommand *, int) {}
+	virtual void OnProcessUsercmdsPost(CUserCmd *, int) {}
 
-	virtual void OnSetupMove(PlayerCommand *) {}
+	virtual void OnSetupMove(CUserCmd *) {}
 
-	virtual void OnSetupMovePost(PlayerCommand *) {}
+	virtual void OnSetupMovePost(CUserCmd *) {}
 
 	virtual void OnProcessMovement();
 	virtual void OnProcessMovementPost();
@@ -262,6 +262,8 @@ public:
 	CMoveData moveDataPre;
 	CMoveData moveDataPost;
 	QAngle oldAngles;
+	// The view angles SetAngles is applying, while its teleport of the pawn runs. That teleport leaves the pitch out.
+	const QAngle *settingViewAngles {};
 
 	bool processingDuck {};
 	bool duckBugged {};
@@ -307,10 +309,10 @@ class MovementPlayerManager : public PlayerManager
 public:
 	MovementPlayerManager()
 	{
-		for (int i = 0; i < MAXPLAYERS + 1; i++)
+		for (i32 i = 0; i < MAX_PLAYERS; i++)
 		{
 			delete players[i];
-			players[i] = new MovementPlayer(i);
+			players[i] = new MovementPlayer(i + 1);
 		}
 	}
 
@@ -321,7 +323,16 @@ public:
 	MovementPlayer *ToPlayer(CPlayerSlot slot);
 	MovementPlayer *ToPlayer(CEntityIndex entIndex);
 	MovementPlayer *ToPlayer(CPlayerUserId userID);
-	MovementPlayer *ToPlayer(u32 index);
+
+	PlayerSlotRange<MovementPlayer> GetAllSlots()
+	{
+		return PlayerSlotRange<MovementPlayer>(players, false);
+	}
+
+	PlayerSlotRange<MovementPlayer> GetInGamePlayers()
+	{
+		return PlayerSlotRange<MovementPlayer>(players, true);
+	}
 
 	MovementPlayer *ToMovementPlayer(Player *player)
 	{

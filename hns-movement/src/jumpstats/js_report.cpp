@@ -371,7 +371,7 @@ namespace hns::jumpstats
 			return false;
 		}
 		CPlayer_ObserverServices *obs = observer->m_pObserverServices();
-		ObserverMode_t mode = obs->m_iObserverMode();
+		ObserverMode_t mode = (ObserverMode_t)obs->m_iObserverMode();
 		if (mode != OBS_MODE_IN_EYE && mode != OBS_MODE_CHASE)
 		{
 			return false;
@@ -403,7 +403,7 @@ namespace hns::jumpstats
 			return;
 		}
 		CCSPlayerPawn *jumperPawn = jumper->GetPlayerPawn();
-		for (i32 i = 0; i < MAXPLAYERS; i++)
+		for (i32 i = 0; i < MAX_PLAYERS; i++)
 		{
 			HNSPlayer *viewer = g_pHNSPlayerManager->ToPlayer(CPlayerSlot(i));
 			if (!viewer || !viewer->jumpstats->reporting)

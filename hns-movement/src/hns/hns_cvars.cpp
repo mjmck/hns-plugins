@@ -259,7 +259,7 @@ namespace hns::cvars
 
 	void SendToAllClients()
 	{
-		for (i32 i = 0; i < MAXPLAYERS; i++)
+		for (i32 i = 0; i < MAX_PLAYERS; i++)
 		{
 			HNSPlayer *player = g_pHNSPlayerManager->ToPlayer(CPlayerSlot(i));
 			if (player && player->IsConnectedController() && !player->IsFakeClient())

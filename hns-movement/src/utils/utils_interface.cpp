@@ -1,13 +1,14 @@
 #include "utils.h"
 #include "gameconfig.h"
-#include "iserver.h"
+#include "engine2/inetworkserverservice.h"
+#include "engine2/networkgameserverbase.h"
 #include "interfaces.h"
 #include "hns_plugin.h"
 #include "ctimer.h"
 #include "keyvalues3.h"
-#include <filesystem.h>
+#include <filesystem/ifilesystem.h>
 #include "checksum_md5.h"
-#include "sdk/serversideclient.h"
+#include "engine2/serversideclient.h"
 #include "sdk/gamerules.h"
 
 #include "memdbgon.h"
@@ -22,7 +23,7 @@ CGameConfig *KZUtils::GetGameConfig()
 	return g_pGameConfig;
 }
 
-const CGlobalVars *KZUtils::GetServerGlobals()
+const CGlobalVars *KZUtils::GetServerGlobals(bool unmodified)
 {
 	return g_HNSPlugin.simulatingPhysics ? &(g_HNSPlugin.serverGlobals) : this->GetGlobals();
 }
@@ -88,47 +89,59 @@ void KZUtils::AddTimer(CTimerBase *timer, bool preserveMapChange)
 {
 	if (preserveMapChange)
 	{
-		g_PersistentTimers.AddToTail(timer);
+		g_PersistentTimers.push_back(timer);
 	}
 	else
 	{
-		g_NonPersistentTimers.AddToTail(timer);
+		g_NonPersistentTimers.push_back(timer);
 	}
 }
 
 void KZUtils::RemoveTimer(CTimerBase *timer)
 {
-	FOR_EACH_VEC(g_PersistentTimers, i)
+	for (size_t i = 0; i < g_PersistentTimers.size(); i++)
 	{
-		if (g_PersistentTimers.Element(i) == timer)
+		if (g_PersistentTimers[i] == timer)
 		{
-			g_PersistentTimers.Remove(i);
+			g_PersistentTimers.erase(g_PersistentTimers.begin() + i);
 			delete timer;
 			return;
 		}
 	}
-	FOR_EACH_VEC(g_NonPersistentTimers, i)
+	for (size_t i = 0; i < g_NonPersistentTimers.size(); i++)
 	{
-		if (g_NonPersistentTimers.Element(i) == timer)
+		if (g_NonPersistentTimers[i] == timer)
 		{
-			g_NonPersistentTimers.Remove(i);
+			g_NonPersistentTimers.erase(g_NonPersistentTimers.begin() + i);
 			delete timer;
 			return;
 		}
 	}
 }
 
-CUtlVector<CServerSideClient *> *KZUtils::GetClientList()
+CUtlVector<CServerSideClientBase *> *KZUtils::GetClientList()
 {
-	if (!g_pNetworkServerService)
+	// There is no game server before the first map loads.
+	if (!g_pNetworkServerService || !g_pNetworkServerService->GetIGameServer())
 	{
 		return nullptr;
 	}
-	static_persist const int offset = g_pGameConfig->GetOffset("ClientOffset");
-	return (CUtlVector<CServerSideClient *> *)((char *)g_pNetworkServerService->GetIGameServer() + offset);
+	return &static_cast<CNetworkGameServerBase *>(g_pNetworkServerService->GetIGameServer())->m_Clients;
 }
 
-CUtlString KZUtils::GetCurrentMapName(bool *result)
+// The engine keeps the client object in its slot after a disconnect, so only hand it out while someone occupies the slot.
+CServerSideClient *KZUtils::GetClientBySlot(CPlayerSlot slot)
+{
+	CUtlVector<CServerSideClientBase *> *clients = this->GetClientList();
+	if (!clients || slot.Get() < 0 || slot.Get() >= clients->Count())
+	{
+		return nullptr;
+	}
+	CServerSideClient *client = static_cast<CServerSideClient *>(clients->Element(slot.Get()));
+	return client && client->IsConnected() ? client : nullptr;
+}
+
+std::string KZUtils::GetCurrentMapName(bool *result)
 {
 	CNetworkGameServerBase *networkGameServer = (CNetworkGameServerBase *)g_pNetworkServerService->GetIGameServer();
 	if (networkGameServer)
@@ -160,61 +173,65 @@ CUtlString KZUtils::GetCurrentMapName(bool *result)
 
 u64 KZUtils::GetCurrentMapWorkshopID()
 {
-	CUtlString directory = this->GetCurrentMapDirectory();
-	if (directory.MatchesPattern("*workshop*"))
+	std::string directory = this->GetCurrentMapDirectory();
+	if (directory.find("workshop") != std::string::npos)
 	{
-		return atoll(directory.UnqualifiedFilenameAlloc());
+		return atoll(V_UnqualifiedFileName(directory.c_str()));
 	}
 	return 0;
 }
 
-CUtlString KZUtils::GetCurrentMapVPK()
+std::string KZUtils::GetCurrentMapVPK()
 {
-	CUtlString map = this->GetCurrentMapName();
-	if (map.IsEmpty())
+	std::string map = this->GetCurrentMapName();
+	if (map.empty())
 	{
 		return "";
 	}
 	CUtlVector<CUtlString> paths;
 	char mapName[1024];
 
-	g_SMAPI->PathFormat(mapName, sizeof(mapName), "maps/%s.vpk", map.Get());
+	g_SMAPI->PathFormat(mapName, sizeof(mapName), "maps/%s.vpk", map.c_str());
 
 	g_pFullFileSystem->FindFileAbsoluteList(paths, mapName, "GAME");
 	if (paths.Count() > 0)
 	{
-		CUtlString realPath = paths[0];
-		if (realPath.MatchesPattern("vpk:*"))
+		std::string realPath = paths[0].Get();
+		if (realPath.starts_with("vpk:"))
 		{
-			realPath = realPath.Slice((sizeof("vpk:") - 1));
-			return realPath.StripFilename().StripExtension() + ".vpk";
+			realPath = realPath.substr(sizeof("vpk:") - 1);
+			return utils::StripExtension(utils::StripFilename(realPath)) + ".vpk";
 		}
 		return realPath;
 	}
 	return "";
 }
 
-CUtlString KZUtils::GetCurrentMapDirectory()
+std::string KZUtils::GetCurrentMapDirectory()
 {
-	return this->GetCurrentMapVPK().DirName();
+	return utils::DirName(this->GetCurrentMapVPK());
 }
 
 u64 KZUtils::GetCurrentMapSize()
 {
-	CUtlString currentMap = this->GetCurrentMapVPK();
+	std::string currentMap = this->GetCurrentMapVPK();
 	u32 size = 0;
-	if (g_pFullFileSystem->FileExists(currentMap.Get()))
+	if (g_pFullFileSystem->FileExists(currentMap.c_str()))
 	{
-		size = g_pFullFileSystem->Size(currentMap.Get());
+		size = g_pFullFileSystem->Size(currentMap.c_str());
 	}
 	else
 	{
-		CUtlString newFileName = currentMap.StripExtension() + "_dir.vpk";
-		size = g_pFullFileSystem->Size(newFileName.Get());
-		for (u32 i = 0; g_pFullFileSystem->FileExists(newFileName.Get()); i++)
+		std::string newFileName = utils::StripExtension(currentMap) + "_dir.vpk";
+		size = g_pFullFileSystem->Size(newFileName.c_str());
+		for (u32 i = 0; g_pFullFileSystem->FileExists(newFileName.c_str()); i++)
 		{
-			newFileName.Format("%s_%03i.vpk", currentMap.StripExtension().Get(), i);
-			size += g_pFullFileSystem->Size(newFileName.Get());
+			{
+			char name[512];
+			snprintf(name, sizeof(name), "%s_%03u.vpk", utils::StripExtension(currentMap).c_str(), i);
+			newFileName = name;
+			}
+			size += g_pFullFileSystem->Size(newFileName.c_str());
 		}
 	}
 	return size;
@@ -222,7 +239,7 @@ u64 KZUtils::GetCurrentMapSize()
 
 bool KZUtils::UpdateCurrentMapMD5()
 {
-	return this->GetFileMD5(this->GetCurrentMapVPK(), currentMapMD5, sizeof(currentMapMD5));
+	return this->GetFileMD5(this->GetCurrentMapVPK().c_str(), currentMapMD5, sizeof(currentMapMD5));
 }
 
 bool KZUtils::GetCurrentMapMD5(char *buffer, i32 size)
@@ -290,9 +307,9 @@ bool KZUtils::GetFileMD5(const char *filePath, char *buffer, i32 size)
 	if (V_strlen(filePath) >= 4 && KZ_STREQI(filePath + V_strlen(filePath) - 4, ".vpk"))
 	{
 		i32 index = 0;
-		CUtlString originalPath = filePath;
-		CUtlString newFile = originalPath.StripExtension() + "_dir.vpk";
-		file = g_pFullFileSystem->OpenEx(newFile.Get(), "rb");
+		std::string originalPath = filePath;
+		std::string newFile = utils::StripExtension(originalPath) + "_dir.vpk";
+		file = g_pFullFileSystem->OpenEx(newFile.c_str(), "rb");
 		if (file)
 		{
 			i64 sizeRemaining = g_pFullFileSystem->Size(file);
@@ -313,8 +330,12 @@ bool KZUtils::GetFileMD5(const char *filePath, char *buffer, i32 size)
 				if (g_pFullFileSystem->EndOfFile(file))
 				{
 					g_pFullFileSystem->Close(file);
-					newFile.Format("%s_%03i.vpk", originalPath.StripExtension().Get(), index);
-					file = g_pFullFileSystem->OpenEx(newFile.Get(), "rb");
+					{
+					char name[512];
+					snprintf(name, sizeof(name), "%s_%03u.vpk", utils::StripExtension(originalPath).c_str(), (u32)index);
+					newFile = name;
+					}
+					file = g_pFullFileSystem->OpenEx(newFile.c_str(), "rb");
 					if (!file)
 					{
 						break;
@@ -365,7 +386,7 @@ u32 KZUtils::GetPlayerCount()
 	{
 		FOR_EACH_VEC(*clients, i)
 		{
-			CServerSideClient *client = clients->Element(i);
+			CServerSideClientBase *client = clients->Element(i);
 
 			if (client && client->IsConnected() && !client->IsFakeClient() && !client->IsHLTV())
 			{
@@ -378,8 +399,7 @@ u32 KZUtils::GetPlayerCount()
 
 void KZUtils::AddTriangleOverlay(Vector const &p1, Vector const &p2, Vector const &p3, u8 r, u8 g, u8 b, u8 a, bool noDepthTest, f64 flDuration)
 {
-	static_persist const int overlayOffset = g_pGameConfig->GetOffset("GetDebugOverlay");
-	void *debugoverlay = CALL_VIRTUAL(void *, overlayOffset, interfaces::pServer);
+	void *debugoverlay = interfaces::pServer->GetDebugOverlays();
 	if (debugoverlay)
 	{
 		static_persist const int offset = g_pGameConfig->GetOffset("DebugTriangle");
@@ -389,8 +409,7 @@ void KZUtils::AddTriangleOverlay(Vector const &p1, Vector const &p2, Vector cons
 
 void KZUtils::ClearOverlays()
 {
-	static_persist const int overlayOffset = g_pGameConfig->GetOffset("GetDebugOverlay");
-	void *debugoverlay = CALL_VIRTUAL(void *, overlayOffset, interfaces::pServer);
+	void *debugoverlay = interfaces::pServer->GetDebugOverlays();
 	if (debugoverlay)
 	{
 		static_persist const int offset = g_pGameConfig->GetOffset("ClearOverlays");

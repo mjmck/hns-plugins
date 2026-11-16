@@ -37,8 +37,8 @@ namespace hns::eventsounds
 	static_global bool roundLive {};
 	static_global bool lastManPlayed {};
 	// Per-attacker kill streak inside the double kill window.
-	static_global f32 lastKillTime[MAXPLAYERS + 1] {};
-	static_global i32 streakKills[MAXPLAYERS + 1] {};
+	static_global f32 lastKillTime[MAX_PLAYERS + 1] {};
+	static_global i32 streakKills[MAX_PLAYERS + 1] {};
 
 	static_persist const char defaultFile[] =
 		"// hns-movement event sounds. Edit, then run hns_reload (server console or rcon).\n"
@@ -88,7 +88,7 @@ namespace hns::eventsounds
 	{
 		roundSerial++;
 		lastManPlayed = false;
-		for (i32 i = 0; i <= MAXPLAYERS; i++)
+		for (i32 i = 0; i <= MAX_PLAYERS; i++)
 		{
 			lastKillTime[i] = 0.0f;
 			streakKills[i] = 0;
@@ -200,7 +200,7 @@ namespace hns::eventsounds
 			return -1;
 		}
 		i32 slot = controller->m_pEntity->m_EHandle.GetEntryIndex() - 1;
-		return (slot >= 0 && slot <= MAXPLAYERS) ? slot : -1;
+		return (slot >= 0 && slot <= MAX_PLAYERS) ? slot : -1;
 	}
 
 	static_function i32 TeamOf(i32 slot)
@@ -214,7 +214,7 @@ namespace hns::eventsounds
 	static_function i32 CountAliveTs(i32 excludeSlot)
 	{
 		i32 count = 0;
-		for (i32 i = 0; i < MAXPLAYERS; i++)
+		for (i32 i = 0; i < MAX_PLAYERS; i++)
 		{
 			if (i == excludeSlot)
 			{
