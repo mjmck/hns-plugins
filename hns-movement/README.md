@@ -82,24 +82,29 @@ Python 3, then run `build-windows.bat`. It clones this repo from `hns-movement.g
 builds, and copies the plugin into the server (it never overwrites an existing cfg).
 
 
-Linux (what DatHost runs), same toolchain as CS2KZ:
+Linux (what DatHost runs): **GitHub builds it.** Every push that touches `hns-movement/` runs the "hns-movement"
+workflow (`.github/workflows/hns-movement.yml` at the repo root) in the Steam Runtime sniper SDK image with clang 22,
+the same toolchain as CS2KZ. Open the run in the repo's Actions tab and download the `hns-movement-linux` artifact; it
+contains `addons/hns-movement/bin/linuxsteamrt64/hns-movement.so` and the gamedata.
+
+To build it yourself:
 
 ```
-git submodule add https://github.com/alliedmodders/metamod-source.git metamod-source
-git submodule add -b cs2 https://github.com/alliedmodders/hl2sdk.git hl2sdk-cs2
-git submodule update --init --recursive
-mkdir build
+git submodule update --init hns-movement/hl2sdk-cs2 hns-movement/metamod-source
+git -C hns-movement/metamod-source submodule update --init --recursive
+cd hns-movement && mkdir -p build
 docker build . -t hns-movement-builder
-docker run -v ./build:/app/build -v ./.git:/app/.git hns-movement-builder
+docker run --rm -v ./build:/app/build hns-movement-builder
 ```
 
-Pin the submodules to the commits CS2KZ uses (`hl2sdk-cs2` `aeaa10b`, `metamod-source` `9c49d4c` at fork time).
-Windows: see `.github/workflows/build.yml`. The output is `build/package/`.
+The SDK is `alliedmodders/s2sdk` (cs2 branch; the old `hl2sdk` cs2 branch is no longer maintained). Keep both
+submodules on the commits CS2KZ uses: `git -C hl2sdk-cs2 checkout <commit>` with the commit from CS2KZ's `hl2sdk-cs2`
+submodule. Windows: see `.github/workflows/build.yml`. The output is `build/package/`.
 
 ## Join sounds
 
-When a player listed in `cfg/hns-movement/join-sounds.cfg` joins, everyone hears their sound. It is played with the same
-EmitSound call CS2KZ uses for jumpstat sounds, once per listener. The trigger is a Steam-validated SteamID64 (not the
+When a player listed in `cfg/hns-movement/join-sounds.cfg` joins, everyone hears their sound. It is sent the same way CS2KZ
+sends jumpstat sounds (a CMsgSosStartSoundEvent message), once per listener. The trigger is a Steam-validated SteamID64 (not the
 name) plus the player being in the server, once per connection, with `hns_join_sound_cooldown` (default 30 min) so map
 changes do not replay it. Custom audio ships in a Workshop addon mounted by MultiAddonManager; see `addon/README.md`.
 `hns_join_sound_test <SteamID | sound event>` plays one from the server console.
@@ -115,8 +120,28 @@ failstats, jsalways, the HUD panel, strafe graphs and option menus. Redie ghosts
 
 ## After a CS2 update
 
-Signatures break. Run `scripts/sync-gamedata.sh` to copy CS2KZ's latest gamedata, rebuild, and check the server log.
-The plugin refuses to load if any movement signature fails to resolve, rather than running with missing detours.
+What breaks, and how the plugin protects the server:
+
+- **Signatures** fail cleanly: the plugin refuses to load (console says which one) rather than run with missing detours.
+- **Changed engine interfaces** (moved virtual functions, changed structs) don't fail cleanly; calling through them can
+  crash or freeze the server. 16 Nov 2026: CS2's 12 Nov update changed the network message table, and every player
+  join froze the server until the watchdog killed it. Two safety checks now cover this (`src/hns/hns_safety.h`):
+  - a **self-test** at load that checks the network messages the plugin sends, with reads that cannot crash;
+  - a **crash breaker** per CS2 server version: if the server dies before a player has played
+    `hns_safety_confirm_seconds` (180) on a new CS2 version, the next start is in **safe mode**.
+  In safe mode the plugin is loaded but does nothing (no hooks, nothing changed, as if the .vdf were renamed `.off`), the
+  server stays joinable, and every map start prints a `SAFE MODE` warning with the reason. `hns_safety_status` shows
+  the state; `hns_safety_reset` clears the breaker after a fixed build is installed (then restart). `hns_safety 0` in
+  hns-movement.cfg turns the breaker off.
+
+How to fix it:
+
+1. Check what CS2KZ (`KZGlobalTeam/cs2kz-metamod`) changed for the same update: usually an SDK bump, a few signatures
+   and small code changes. hns-movement shares CS2KZ's player, movement, sdk and utils code, so the same changes apply.
+2. Move `hl2sdk-cs2` (and `metamod-source` if CS2KZ did) to the commits CS2KZ now uses.
+3. `scripts/sync-gamedata.sh` merges CS2KZ's latest gamedata and lists the hns-only entries to check by hand
+   (compare them with CounterStrikeSharp's `gamedata.json`).
+4. Push; GitHub builds it. Install the new `.so` and gamedata, run `hns_safety_reset` if it is in safe mode, restart.
 
 ## ChaseMod notes
 
