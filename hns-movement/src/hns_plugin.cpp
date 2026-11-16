@@ -17,6 +17,7 @@
 #include "hns/hns_gameplay.h"
 #include "hns/hns_compat.h"
 #include "hns/hns_safety.h"
+#include "hns/hns_crashlog.h"
 
 #include "tier0/memdbgon.h"
 
@@ -27,6 +28,8 @@ PLUGIN_EXPOSE(HNSPlugin, g_HNSPlugin);
 bool HNSPlugin::Load(PluginId id, ISmmAPI *ismm, char *error, size_t maxlen, bool late)
 {
 	PLUGIN_SAVEVARS();
+	// First, so a crash anywhere after this (load, join, round) leaves a call stack in the console and in cfg/hns-movement.
+	hns::crashlog::Install();
 	modules::Initialize();
 
 	if (!interfaces::Initialize(ismm, error, maxlen))
@@ -109,6 +112,7 @@ void HNSPlugin::SwitchOff()
 bool HNSPlugin::Unload(char *error, size_t maxlen)
 {
 	this->unloading = true;
+	hns::crashlog::Uninstall();
 	hns::safety::OnUnload();
 	if (hns::safety::IsSafeMode())
 	{

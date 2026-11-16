@@ -23,6 +23,8 @@ namespace hns::safety
 	static_global bool safeMode {};
 	static_global std::string safeModeReason;
 	static_global bool selfTestPassed {};
+	static_global bool selfTestRan {};
+	static_global bool breakerTripped {};
 	// Breaker state for the running CS2 version.
 	static_global bool probing {};
 	// "probing" is only written once a human is in the game, so restarting an empty server never trips the breaker.
@@ -189,6 +191,7 @@ namespace hns::safety
 		bool haveState = ReadRunState(lastVersion, lastState);
 		if (haveState && lastVersion == runningVersion && lastState == "probing")
 		{
+			breakerTripped = true;
 			safeMode = true;
 			safeModeReason = "the server stopped (crash or freeze) the last time hns-movement ran on this CS2 version, before a player had "
 							 "played long enough to confirm it works";
@@ -223,6 +226,7 @@ namespace hns::safety
 		{
 			return true;
 		}
+		selfTestRan = true;
 		selfTestPassed = SelfTest(reason, maxlen);
 		if (!selfTestPassed)
 		{
@@ -294,8 +298,13 @@ namespace hns::safety
 	{
 		META_CONPRINTF("---- hns-movement safety ----\n");
 		META_CONPRINTF("CS2 server version %u\n", runningVersion);
-		META_CONPRINTF("self-test   %s\n", selfTestPassed ? "passed" : safeMode ? "FAILED" : "not run yet (runs at map start)");
-		META_CONPRINTF("breaker     %s\n", !settings.safety ? "off (hns_safety 0)" : probing ? "probing (not confirmed yet)" : "confirmed");
+		const char *test = selfTestPassed ? "passed" : !selfTestRan ? "not run (runs at map start, skipped in safe mode)" : "FAILED";
+		META_CONPRINTF("self-test   %s\n", test);
+		const char *breaker = !settings.safety ? "off (hns_safety 0)"
+							  : breakerTripped ? "TRIPPED (the server died last time on this version before it was confirmed)"
+							  : probing        ? "probing (not confirmed yet)"
+											   : "confirmed";
+		META_CONPRINTF("breaker     %s\n", breaker);
 		if (probing)
 		{
 			META_CONPRINTF("confirmed   %.0f / %.0f s with a player in the game\n", confirmedSeconds, settings.safetyConfirmSeconds);
